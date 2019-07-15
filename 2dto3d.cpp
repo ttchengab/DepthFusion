@@ -79,7 +79,7 @@ void writeToPly(vector<Point> points, const char* fileName){
     fclose (bfile);
 }
 
-//Interpolation 2 dimensional and 3 dimentional
+//Interpolation 2 dimensional and 3 dimensional
 float interpolation(float x, float y, float *map, int width){
     float weightx = x-floor(x);
     float weighty = y-floor(y);
