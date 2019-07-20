@@ -5,6 +5,10 @@
 #include <vector> // for 2D vector
 #include <bitset>
 #include <cmath>
+#include "eigenlib/Eigen/Dense"
+#include "eigenlib/Eigen/Core"
+#include "eigenlib/Eigen/Geometry"
+using namespace Eigen;
 using namespace std;
 const int pixelWidth = 640, pixelHeight = 480;
 const float fx = 525.0, fy = 525.0, cx = 319.5, cy = 239.5, depthFactor = 5000.0;
@@ -79,7 +83,7 @@ void writeToPly(vector<Point> points, const char* fileName){
     fclose (bfile);
 }
 
-//Interpolation 2 dimensional and 3 dimentional
+//Interpolation 2 dimensional and 3 dimensional
 float interpolation(float x, float y, const float *map, int width){
     float weightx = x-floor(x);
     float weighty = y-floor(y);
@@ -107,6 +111,7 @@ float interpolation(float x, float y, const float *map, int width){
 }
 float interpolation(float x, float y, float z,  const vector<float> &map3d, int depth, int width){
     float interpolatedV;
+    //cout<<x<<" "<<y<<" "<<z<<endl;
     if(floor(y+1)<256 && floor(x+1)<256 && floor(z+1)<512){
         float weightx = x-floor(x);
         float weighty = y-floor(y);
@@ -123,8 +128,11 @@ float interpolation(float x, float y, float z,  const vector<float> &map3d, int 
         float xy2 = (f001*(1-weightx)+f101*weightx)*(1-weighty)+(f011*(1-weightx)+f111*weightx)*weighty;
         interpolatedV = xy1*(1-weightz)+xy2*weightz;
     }
+    else if(y != 256 && x != 256 && z!=512){
+         interpolatedV = map3d[int(y)*width*depth+int(x)*depth+int(z)];
+     }
     else{
-        interpolatedV = map3d[int(y)*width*depth+int(x)*depth+int(z)];
+        interpolatedV = map3d[int(y-1)*width*depth+int(x-1)*depth+int(z-1)];
     }
     return interpolatedV;
 }
@@ -151,10 +159,19 @@ void surfaceMeasurement(float *depthMap){
 }
 
 //Part 2 and 3: Create TSDF and RayCast based on TSDF
+MatrixXf transformation(const Vector3f &translation, float rotx, float roty, float rotz){
+    Transform<float, 3, Affine> t = Transform<float, 3, Affine>::Identity();
+    t.translate(translation);
+    t.rotate(AngleAxisf(rotx, Vector3f::UnitX()));
+    t.rotate(AngleAxisf(roty, Vector3f::UnitY()));
+    t.rotate(AngleAxisf(rotz, Vector3f::UnitZ()));
+    return t.inverse().matrix();
+}
 void rayCasting(const vector<float> &voxelsTSDF){
     float minimumDepth = 0;
     vector<Point>points;
-    float maxlocz = 0;
+    float translationx = 0.0, translationy = 0.0, translationz = 0.0;
+    MatrixXf rotation = transformation(Vector3f(0.0,0.0,0.0), M_PI/12.0, 0.0, 0.0);
     for(int y = 0; y < pixelHeight; y++){
         for(int x = 0; x < pixelWidth; x++){
             int i = y*pixelWidth+x;
@@ -165,19 +182,36 @@ void rayCasting(const vector<float> &voxelsTSDF){
             float totalLength = sqrt(pow(pixPt.x, 2)+pow(pixPt.y, 2)+pow(pixPt.z, 2));
             float normx = pixPt.x/totalLength, normy = pixPt.y/totalLength, normz = pixPt.z/totalLength;
             float startx = minimumDepth*normx, starty = minimumDepth*normy, startz = minimumDepth*normz;
+            startx = startx - translationx;
+            starty = starty - translationy;
+            startz = startz - translationz;
             float stepx = normx*voxelParams.voxSize, stepy = normy*voxelParams.voxSize, stepz = normz*voxelParams.voxSize;
+            VectorXf poseRotate(4);
+            poseRotate << stepx,
+                          stepy,
+                          stepz,
+                              1;
+            VectorXf result = rotation*poseRotate;
+            stepx = result(0,0);
+            stepy = result(1,0);
+            stepz = result(2,0);
             float locx = startx, locy = starty, locz = startz, locxv = 0, locyv = 0, loczv = 0;
+            locxv = (locx+voxelParams.voxPhysLength/2)/voxelParams.voxSize;
+            locyv = (locy+voxelParams.voxPhysWidth/2)/voxelParams.voxSize;
+            loczv = (locz)/voxelParams.voxSize;
             float curTSDF = interpolation(locxv, locyv, loczv, voxelsTSDF, voxelParams.voxNumz, voxelParams.voxNumx);
-            while(curTSDF > 0 && abs(locx) < voxelParams.voxPhysLength/2 && abs(locy) < voxelParams.voxPhysLength/2 && locz < voxelParams.voxPhysDepth){
+            //locxv < voxelParams.voxNumx && locxv >=0 && locyv < voxelParams.voxNumy && locxv >=0 && loczv < voxelParams.voxNumz && locxv >=0
+            while(curTSDF > 0 && locxv < voxelParams.voxNumx && locxv >=0 && locyv < voxelParams.voxNumy && locyv >=0 && loczv < voxelParams.voxNumz && loczv >=0){
+                //cout<<locxv<<" "<<locyv<<" "<<loczv<<endl;
+                curTSDF = interpolation(locxv, locyv, loczv, voxelsTSDF, voxelParams.voxNumz, voxelParams.voxNumx);
                 locxv = (locx+voxelParams.voxPhysLength/2)/voxelParams.voxSize;
                 locyv = (locy+voxelParams.voxPhysWidth/2)/voxelParams.voxSize;
                 loczv = (locz)/voxelParams.voxSize;
-                curTSDF = interpolation(locxv, locyv, loczv, voxelsTSDF, voxelParams.voxNumz, voxelParams.voxNumx);
                 locx += stepx;
                 locy += stepy;
                 locz += stepz;
             }
-            if( abs(locx) < voxelParams.voxPhysLength/2 && abs(locy) < voxelParams.voxPhysLength/2 && locz < voxelParams.voxPhysDepth){
+            if( locxv < voxelParams.voxNumx && locxv >=0 && locyv < voxelParams.voxNumy && locyv >=0 && loczv < voxelParams.voxNumz && loczv >=0){
                 Point currentPt;
                 currentPt.x = locx;
                 currentPt.y = locy;
@@ -186,6 +220,8 @@ void rayCasting(const vector<float> &voxelsTSDF){
             }
         }
     }
+    cout<<"Raycast done";
+    writeToPly(points, "rayCastMesh.txt");
     writeToPly(points, "rayCastMesh.ply");
 }
 void validateTSDF(const vector<float> &voxelsTSDF){
@@ -206,17 +242,29 @@ void validateTSDF(const vector<float> &voxelsTSDF){
     }
     writeToPly(points, "tsdfMesh.ply");
 }
+
 void createTSDF(float* depthMap){
     vector<float> voxelsTSDF(voxelParams.voxVolume, 1.0);
-    for(int y = 0; y <  voxelParams.voxNumx; y++){
+    MatrixXf tf = transformation(Vector3f(0.0,0.0,0.0), M_PI/6.0, 0.0, 0.0);
+    for(int y = 0; y <  voxelParams.voxNumy; y++){
         for(int x = 0; x <  voxelParams.voxNumx; x++){
             for(int z = 0; z < voxelParams.voxNumz; z++){
                 int i = z+x*voxelParams.voxNumz+y*voxelParams.voxNumz*voxelParams.voxNumx;
                 //Computing K[x,y,z] = [x,y]
                 float curVoxDepth,curVoxDistance;
+
                 float voxelx = voxelParams.voxSize*x-voxelParams.voxSize/2-voxelParams.voxPhysLength/2;
                 float voxely = voxelParams.voxSize*y-voxelParams.voxSize/2-voxelParams.voxPhysLength/2;
                 float voxelz = voxelParams.voxSize*z-voxelParams.voxSize/2;
+                VectorXf poseTransform(4);
+                poseTransform << voxelx,
+                                 voxely,
+                                 voxelz,
+                                 1;
+                VectorXf result = tf*poseTransform;
+                voxelx = result(0,0);
+                voxely = result(1,0);
+                voxelz = result(2,0);
                 float onScreenx = (voxelx*fx)/voxelz+cx-0.5;
                 float onScreeny = (voxely*fy)/voxelz+cy-0.5;
                 //Computing Voxel Depth
@@ -235,6 +283,7 @@ void createTSDF(float* depthMap){
             }
         }
     }
+    cout<<"TSDF done"<<endl;
     //validateTSDF(voxelsTSDF); //Used to validate TSDF
     rayCasting(voxelsTSDF);
 }
@@ -242,7 +291,9 @@ void createTSDF(float* depthMap){
 int main(){
     float *depthMap;
     depthMap = getDepthMap("1305031102.160407.png.bin");
+    cout<<"depthMap get"<<endl;
     surfaceMeasurement(depthMap);
+    cout<<"surface measurement done"<<endl;
     createTSDF(depthMap);
     return 0;
 }
