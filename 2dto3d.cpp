@@ -16,6 +16,7 @@ using namespace std;
 using namespace std::chrono;
 const int pixelWidth = 640, pixelHeight = 480;
 const float fx = 525.0, fy = 525.0, cx = 319.5, cy = 239.5, depthFactor = 5000.0;
+const float fxinv = 1.0/double(fx), fyinv = 1.0/double(fy);
 int totalWeight = 0;
 struct Point{
     float x, y, z;
@@ -34,6 +35,7 @@ class VoxelParams{
         int voxNumx, voxNumy, voxNumz;
         int voxVolume;
         float truncationThrs;
+        float truncationThrsInv;
         VoxelParams(float physLength, int numx, int numy, int numz)
             : voxPhysLength(physLength), voxNumx(numx), voxNumy(numy), voxNumz(numz){
             voxPhysWidth = voxPhysLength/voxNumx*voxNumy;
@@ -41,10 +43,11 @@ class VoxelParams{
             voxVolume = voxNumx*voxNumy*voxNumz;
             voxSize = voxPhysLength/voxNumx;
             truncationThrs = voxSize*5;
+            truncationThrsInv = 1/truncationThrsInv;
         }
 };
 //Voxel Parameters Initialization
-VoxelParams voxelParams(2.0, 256, 256, 512);
+VoxelParams voxelParams(2.0, 256, 256, 256);
 
 QuatPose clibRot(1.3452, 0.6273, 1.6627, 0.6582, 0.6109, -0.2950, -0.3265);
 
@@ -142,14 +145,14 @@ float interpolation(float x, float y, const float *map, int width){
     float z01 = map[(int(y+1))*width+int(x)];
     float z10 = map[int(y)*width+int(x)+1];
     float z11 = map[(int(y+1))*width+int(x)+1];
-    float x00 = (floor(x)-cx)*z00/fx;
-    float x01 = (floor(x)-cx)*z01/fx;
-    float x10 = (floor(x+1)-cx)*z10/fx;
-    float x11 = (floor(x+1)-cx)*z11/fx;
-    float y00 = (floor(y)-cy)*z00/fy;
-    float y01 = (floor(y)-cy)*z01/fy;
-    float y10 = (floor(y+1)-cy)*z10/fy;
-    float y11 = (floor(y+1)-cy)*z11/fy;
+    float x00 = (floor(x)-cx)*z00*fxinv;
+    float x01 = (floor(x)-cx)*z01*fxinv;
+    float x10 = (floor(x+1)-cx)*z10*fxinv;
+    float x11 = (floor(x+1)-cx)*z11*fxinv;
+    float y00 = (floor(y)-cy)*z00*fyinv;
+    float y01 = (floor(y)-cy)*z01*fyinv;
+    float y10 = (floor(y+1)-cy)*z10*fyinv;
+    float y11 = (floor(y+1)-cy)*z11*fyinv;
     float d00 = sqrt(pow(x00, 2)+pow(y00, 2)+pow(z00, 2));
     float d01 = sqrt(pow(x01, 2)+pow(y01, 2)+pow(z01, 2));
     float d10 = sqrt(pow(x10, 2)+pow(y10, 2)+pow(z10, 2));
@@ -197,16 +200,50 @@ vector<Point> computePoints(float *depthMap){
         if(currentDepth != 0){
             currentPt.z = currentDepth;
             float x = i%pixelWidth, y = i/pixelWidth;
-            currentPt.x = (x-cx)*currentPt.z/fx;
-            currentPt.y = (y-cy)*currentPt.z/fy;
+            currentPt.x = (x-cx)*currentPt.z*fxinv;
+            currentPt.y = (y-cy)*currentPt.z*fyinv;
             points.push_back(currentPt);
         }
     }
     return points;
 }
+vector<Point> computeNormal(vector<Point> vertexMap){
+    vector<Point> normalVectors;
+    for(int i = 0; i < vertexMap.size(); i++){
+        int x = i%pixelWidth, y = i/pixelWidth;
+        Point u, v;
+        if((x+1)%pixelWidth != 0){
+            u.x = vertexMap[i+1].x-vertexMap[i].x;
+            u.y = vertexMap[i+1].y-vertexMap[i].y;
+            u.z = vertexMap[i+1].z-vertexMap[i].z;
+        }
+        else{
+            u.x = vertexMap[i].x-vertexMap[i-1].x;
+            u.y = vertexMap[i].y-vertexMap[i-1].y;
+            u.z = vertexMap[i].z-vertexMap[i-1].z;
+        }
+        if((y+1)<320){
+            v.x = vertexMap[i+pixelWidth].x-vertexMap[i].x;
+            v.y = vertexMap[i+pixelWidth].y-vertexMap[i].y;
+            v.z = vertexMap[i+pixelWidth].z-vertexMap[i].z;    
+        }
+        else{
+            v.x = vertexMap[i].x-vertexMap[i-pixelWidth].x;
+            v.y = vertexMap[i].y-vertexMap[i-pixelWidth].y;
+            v.z = vertexMap[i].z-vertexMap[i-pixelWidth].z;    
+        }
+        Point normalVec;
+        normalVec.x = u.y*v.z-v.y*u.z;
+        normalVec.y = v.x*u.z-u.x*v.z;
+        normalVec.z = u.x*v.y-v.x*u.y;
+        normalVectors.push_back(normalVec);
+    }
+}
 void surfaceMeasurement(float *depthMap){
-    vector<Point> points = computePoints(depthMap);
-    writeToPly(points, "testMesh.ply");
+    vector<Point> vertexMap = computePoints(depthMap);
+    writeToPly(vertexMap, "testMesh.ply");
+    vector<Point> normalMap = computeNormal(vertexMap);
+    //test normal map
     cout<<"surface measurement finished"<<endl;
 }
 
@@ -243,8 +280,8 @@ void rayCasting(const vector<float> &voxelsTSDF, MatrixXf rotation, float transl
             int i = y*pixelWidth+x;
             Point pixPt;
             pixPt.z = 1.0;
-            pixPt.x = (x-cx)/fx;
-            pixPt.y = (y-cy)/fy;
+            pixPt.x = (x-cx)*fxinv;
+            pixPt.y = (y-cy)*fyinv;
             float totalLength = sqrt(pow(pixPt.x, 2)+pow(pixPt.y, 2)+pow(pixPt.z, 2));
             float normx = pixPt.x/totalLength, normy = pixPt.y/totalLength, normz = pixPt.z/totalLength;
             float startx = minimumDepth*normx, starty = minimumDepth*normy, startz = minimumDepth*normz;
@@ -267,7 +304,7 @@ void rayCasting(const vector<float> &voxelsTSDF, MatrixXf rotation, float transl
             loczv = (locz)/voxelParams.voxSize;
             float curTSDF = interpolation(locxv, locyv, loczv, voxelsTSDF, voxelParams.voxNumz, voxelParams.voxNumx);
             //locxv < voxelParams.voxNumx && locxv >=0 && locyv < voxelParams.voxNumy && locxv >=0 && loczv < voxelParams.voxNumz && locxv >=0
-            while(curTSDF > 0 && locxv < voxelParams.voxNumx && locxv >=0 && locyv < voxelParams.voxNumy && locyv >=0 && loczv < voxelParams.voxNumz && loczv >=0){
+            while(curTSDF > 0 && locxv < voxelParams.voxNumx && locxv >=0 && locyv < voxelParams.voxNumy && locyv >= 0 && loczv < voxelParams.voxNumz && loczv >= 0){
                 //cout<<locxv<<" "<<locyv<<" "<<loczv<<endl;
                 curTSDF = interpolation(locxv, locyv, loczv, voxelsTSDF, voxelParams.voxNumz, voxelParams.voxNumx);
                 locxv = (locx+voxelParams.voxPhysLength/2)/voxelParams.voxSize;
@@ -277,7 +314,7 @@ void rayCasting(const vector<float> &voxelsTSDF, MatrixXf rotation, float transl
                 locy += stepy;
                 locz += stepz;
             }
-            if( locxv < voxelParams.voxNumx && locxv >=0 && locyv < voxelParams.voxNumy && locyv >=0 && loczv < voxelParams.voxNumz && loczv >=0){
+            if( locxv < voxelParams.voxNumx && locxv >= 0 && locyv < voxelParams.voxNumy && locyv >= 0 && loczv < voxelParams.voxNumz && loczv >= 0){
                 Point currentPt;
                 currentPt.x = locx;
                 currentPt.y = locy;
@@ -288,13 +325,13 @@ void rayCasting(const vector<float> &voxelsTSDF, MatrixXf rotation, float transl
     }
     cout<<"Raycast done";
     //writeToPly(points, "rayCastMesh.txt");
-    writeToPly(points, "rayCastMesh.ply");
+    writeToPly(points, "rayCastMesh256.ply");
 }
 void validateTSDF(const vector<float> &voxelsTSDF){
     vector<Point> points;
     Point currentPt;
-    for(int y = 0; y <  voxelParams.voxNumx; y++){
-        for(int x = 0; x <  voxelParams.voxNumx; x++){
+    for(int y = 0; y < voxelParams.voxNumx; y++){
+        for(int x = 0; x < voxelParams.voxNumx; x++){
             for(int z = 0; z < voxelParams.voxNumz; z++){
                 int i = z+x*voxelParams.voxNumz+y*voxelParams.voxNumz*voxelParams.voxNumx;
                 if(fabs(voxelsTSDF[i])<0.2){
@@ -311,10 +348,10 @@ void validateTSDF(const vector<float> &voxelsTSDF){
 
 vector<float> createTSDF(float* depthMap, MatrixXf tf){
     vector<float> voxelsTSDF(voxelParams.voxVolume, 1.0);
-    for(int y = 0; y <  voxelParams.voxNumy; y++){
-        for(int x = 0; x <  voxelParams.voxNumx; x++){
+
+    for(int y = 0; y < voxelParams.voxNumy; y++){
+        for(int x = 0; x < voxelParams.voxNumx; x++){
             for(int z = 0; z < voxelParams.voxNumz; z++){
-                // high_resolution_clock::time_point t1 = high_resolution_clock::now();
                 int i = z+x*voxelParams.voxNumz+y*voxelParams.voxNumz*voxelParams.voxNumx;
                 //Computing K[x,y,z] = [x,y]
                 float curVoxDepth,curVoxDistance;
@@ -330,32 +367,29 @@ vector<float> createTSDF(float* depthMap, MatrixXf tf){
                 voxelx = result(0,0);
                 voxely = result(1,0);
                 voxelz = result(2,0);
-                float onScreenx = (voxelx*fx)/voxelz+cx-0.5;
-                float onScreeny = (voxely*fy)/voxelz+cy-0.5;
-                // high_resolution_clock::time_point t2 = high_resolution_clock::now();
-                // auto duration = duration_cast<microseconds>( t2 - t1 ).count();
-                // cout <<" Part 1 Duration is:" <<duration<<endl;
+                float onScreenx = -1;
+                float onScreeny = -1;
+                if(abs(voxelz-0.0)<0.0001) continue;
+                onScreenx = (voxelx*fx)/voxelz+cx-0.5;
+                onScreeny = (voxely*fy)/voxelz+cy-0.5;
                 // //Computing Voxel Depth
-                // high_resolution_clock::time_point t3 = high_resolution_clock::now();
                 if(onScreenx < pixelWidth && onScreeny < pixelHeight && onScreenx >= 0 && onScreeny >= 0){
-                    //curVoxDepth = interpolation(onScreenx, onScreeny, depthMap, pixelWidth);
-                     float z00 = depthMap[int(onScreeny)*pixelWidth+int(onScreenx)];
-                     float x00 = (floor(onScreenx)-cx)*z00/fx;
-                     float y00 = (floor(onScreeny)-cy)*z00/fy;
-                     curVoxDepth = sqrt(pow(x00, 2)+pow(y00, 2)+pow(z00, 2));
+                    curVoxDepth = interpolation(onScreenx, onScreeny, depthMap, pixelWidth);
+                    // float z00 = depthMap[int(onScreeny)*pixelWidth+int(onScreenx)];
+                    // float x00 = (floor(onScreenx)-cx)*z00*fxinv;
+                    // float y00 = (floor(onScreeny)-cy)*z00*fyinv;
+                    // curVoxDepth = sqrt(pow(x00, 2)+pow(y00, 2)+pow(z00, 2));
                     if(curVoxDepth < 0) continue; //depth isn't normal
                     curVoxDistance = sqrt(pow(voxelx, 2)+pow(voxely, 2)+pow(voxelz, 2));
                     float SDF = curVoxDepth - curVoxDistance;
                     if(abs(SDF)<voxelParams.truncationThrs){
-                        voxelsTSDF[i] = SDF/voxelParams.truncationThrs;
+                        voxelsTSDF[i] = SDF*voxelParams.truncationThrsInv;
                     }
                     else if(SDF>0){
                         voxelsTSDF[i] = 1;
                     }
                 }
-                // high_resolution_clock::time_point t4 = high_resolution_clock::now();
-                // auto duration2 = duration_cast<microseconds>( t4 - t3 ).count();
-                // cout <<" Part 2 Duration is:" <<duration2<<endl;
+
             }
 
         }
@@ -399,36 +433,30 @@ int main(){
     vector<string> imageNames = getImageNames("depth.txt");
     string firstImg = imageNames[0]+".png.bin";
     float *depthMap;
+    bool testmode = 1;
     depthMap = getDepthMap(firstImg.c_str());
     surfaceMeasurement(depthMap);
     QuatPose pose(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
     MatrixXf tfo = qtransformation(Vector3f(pose.tx, pose.ty, pose.ty), pose.qx, pose.qy, pose.qz, pose.qw);
-
-    high_resolution_clock::time_point t1 = high_resolution_clock::now();
     vector<float> voxelsTSDF = createTSDF(depthMap, tfo.inverse());
-    high_resolution_clock::time_point t2 = high_resolution_clock::now();
-    auto duration = duration_cast<seconds>( t2 - t1 ).count();
-    cout << duration<<endl;
     totalWeight++;
-
-    for(int i = 1; i < 5; i ++){
-        string img = imageNames[i]+".png.bin";
-        float imgPose = stof(imageNames[i].substr(7,16));
-        depthMap = getDepthMap(img.c_str());
-        QuatPose newPose = getNearestPose(imgPose, poses);
-        MatrixXf calibrationMtx = qtransformation(Vector3f(clibRot.tx, clibRot.ty, clibRot.tz), clibRot.qx, clibRot.qy, clibRot.qz, clibRot.qw);
-        MatrixXf ntf = qtransformation(Vector3f(newPose.tx, newPose.ty, newPose.tz), newPose.qx, newPose.qy, newPose.qz, newPose.qw);
-        MatrixXf tf = calibrationMtx.inverse()*ntf;
-        vector<float> newTSDF = createTSDF(depthMap, tf.inverse());
-        voxelsTSDF = fuseTSDF(voxelsTSDF, newTSDF);
+    if(testmode == 0){
+        for(int i = 1; i < 5; i ++){
+                cout<<"Image No.";
+                cout<<i<<endl;
+                string img = imageNames[i]+".png.bin";
+                float imgPose = stof(imageNames[i].substr(7,16));
+                depthMap = getDepthMap(img.c_str());
+                QuatPose newPose = getNearestPose(imgPose, poses);
+                MatrixXf calibrationMtx = qtransformation(Vector3f(clibRot.tx, clibRot.ty, clibRot.tz), clibRot.qx, clibRot.qy, clibRot.qz, clibRot.qw);
+                MatrixXf ntf = qtransformation(Vector3f(newPose.tx, newPose.ty, newPose.tz), newPose.qx, newPose.qy, newPose.qz, newPose.qw);
+                MatrixXf tf = calibrationMtx.inverse()*ntf;
+                vector<float> newTSDF = createTSDF(depthMap, tf.inverse());
+                voxelsTSDF = fuseTSDF(voxelsTSDF, newTSDF);
     }
-
-//15
+    }
     //validateTSDF(voxelsTSDF); //Used to validate TSDF
-    
     MatrixXf viewAngle = transformation(Vector3f(0.0,0.0,0.0), 0.0, 0.0, 0.0);
     rayCasting(voxelsTSDF, viewAngle, 0.0, 0.0, 0.0);
-    
-
     return 0;
 }
