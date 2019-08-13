@@ -1,15 +1,6 @@
-#include <iostream>
-#include <stdio.h>
-#include <stdlib.h>
-#include <errno.h>
-#include <vector> // for 2D vector
-#include <bitset>
-#include <cmath>
-#include <cstring>
-#include <chrono>
-#include <fstream>
+#include "HelperFunctions.h"
 
-using namespace std;
+
 QuatPose getNearestPose(float imageTime, const vector<string>& poses){
     float closestTime = stof(poses[0].substr(7,15));
     float closestDifference = abs(closestTime-imageTime);

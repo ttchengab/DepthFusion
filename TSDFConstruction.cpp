@@ -1,19 +1,4 @@
-#include <iostream>
-#include <stdio.h>
-#include <stdlib.h>
-#include <errno.h>
-#include <vector> // for 2D vector
-#include <bitset>
-#include <cmath>
-#include <cstring>
-#include <chrono>
-#include <fstream>
-#include "eigenlib/Eigen/Dense"
-#include "eigenlib/Eigen/Core"
-#include "eigenlib/Eigen/Geometry"
-
-using namespace Eigen;
-using namespace std;
+#include "TSDFConstruction.h"
 
 MatrixXf transformation(const Vector3f &translation, float rotx, float roty, float rotz){
     Transform<float, 3, Affine> t = Transform<float, 3, Affine>::Identity();
@@ -57,8 +42,9 @@ void validateTSDF(const vector<float> &voxelsTSDF){
     writeToPly(points, "tsdfMesh.ply");
 }
 
-vector<float> createTSDF(float* depthMap, MatrixXf tf){
-    vector<float> voxelsTSDF(voxelParams.voxVolume, 1.0);
+void createTSDF(float* depthMap, MatrixXf tf, vector<float>& voxelsTSDF){
+
+    std::fill_n(voxelsTSDF.begin(), voxelsTSDF.size(), 1);
 
     for(int y = 0; y < voxelParams.voxNumy; y++){
         for(int x = 0; x < voxelParams.voxNumx; x++){
@@ -69,11 +55,12 @@ vector<float> createTSDF(float* depthMap, MatrixXf tf){
                 float voxelx = voxelParams.voxSize*x-voxelParams.voxSize/2-voxelParams.voxPhysLength/2;
                 float voxely = voxelParams.voxSize*y-voxelParams.voxSize/2-voxelParams.voxPhysLength/2;
                 float voxelz = voxelParams.voxSize*z-voxelParams.voxSize/2;
-                VectorXf poseTransform(4);
-                poseTransform << voxelx,
-                                 voxely,
-                                 voxelz,
-                                 1;
+                Vector4f poseTransform(voxelx, voxely, voxelz, 1);
+                // VectorXf poseTransform(4);
+                // poseTransform << voxelx,
+                //                  voxely,
+                //                  voxelz,
+                //                  1;
                 VectorXf result = tf*poseTransform;
                 voxelx = result(0,0);
                 voxely = result(1,0);
@@ -106,5 +93,5 @@ vector<float> createTSDF(float* depthMap, MatrixXf tf){
         }
     }
     cout<<"TSDF done"<<endl;
-    return voxelsTSDF;
+    //return voxelsTSDF;
 }

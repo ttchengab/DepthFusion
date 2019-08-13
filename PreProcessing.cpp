@@ -1,14 +1,5 @@
-#include <iostream>
-#include <stdio.h>
-#include <stdlib.h>
-#include <errno.h>
-#include <vector> // for 2D vector
-#include <bitset>
-#include <cmath>
-#include <cstring>
-#include <fstream>
-#include "ParamsInit.cpp"
-using namespace std;
+#include "PreProcessing.h"
+
 
 vector<string> getGroundTruthPose(const char* fileName){
     ifstream myReadFile;
