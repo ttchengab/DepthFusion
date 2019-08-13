@@ -59,6 +59,7 @@ vector<Point> computeNormal(vector<Point> vertexMap){
         normalVec.z = u.x*v.y-v.x*u.y;
         normalVectors.push_back(normalVec);
     }
+    return normalVectors;
 }
 void surfaceMeasurement(float *depthMap){
     vector<Point> vertexMap = computePoints(depthMap);

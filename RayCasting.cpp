@@ -65,5 +65,5 @@ void rayCasting(const vector<float> &voxelsTSDF, MatrixXf rotation, float transl
     }
     cout<<"Raycast done";
     //writeToPly(points, "rayCastMesh.txt");
-    writeToPly(points, "rayCastMesh256.ply");
+    writeToPly(points, "icpRCMesh256.ply");
 }

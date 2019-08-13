@@ -33,36 +33,129 @@ vector<float> fuseTSDF(vector<float> voxelsTSDF, vector<float> newTSDF){
     return voxelsTSDF;
 }
 
-icpPose getICPPose(icpPose prev, float* depthMap){
+MatrixXf getICPPose(MatrixXf initTransform, float* depthMap, const vector<float> &voxelsTSDF){
     //float x = (depthMap-cx)*z00*fxinv;
-    MatrixXf Tgkprev(3, 4);
-    Tgkprev << 1, prev.alpha, -1*prev.gamma, prev.tx,
-               -1*prev.alpha, 1, prev.betta, prev.tx,
-               prev.gamma, -1*prev.betta, 1, prev.tz;
-    MatrixXf curTransform = Tgkprev.inverse()*Tgkprev;
+    MatrixXf f2fTransform = initTransform.inverse()*initTransform;
+    MatrixXf curTransform = initTransform;
     vector<Point> points = computePoints(depthMap);
-    for(int i = 0; i < points.size(); i++){
-        VectorXf originalPt(4);
-        originalPt << points[i].x,
+    vector<Point> normals = computeNormal(points);
+    MatrixXf AtA, b;
+    MatrixXf Tinc(3, 4);
+    for(int z = 1; z < 5; z++){
+        vector<Point> prevVPts, globalVkPts, prevNVecs;
+        for(int i = 0; i < points.size(); i++){
+            VectorXf originalPt(4);
+            originalPt << points[i].x,
                         points[i].y,
                         points[i].z,
                         1;
-        VectorXf result = curTransform*originalPt;
-        float onScreenx = result(0,0)*fx/result(2,0);
-        float onScreeny = result(1,0)*fy/result(2,0);
-        if(onScreenx < pixelWidth && onScreeny < pixelHeight && onScreenx >= 0 && onScreeny >= 0){
-            float curVoxDepth = interpolation(onScreenx, onScreeny, depthMap, pixelWidth);
-            Point uPt;
-            uPt.z = curVoxDepth;
-            uPt.x = (onScreenx-cx)*uPt.z*fxinv;
-            uPt.y = (onScreeny-cy)*uPt.z*fyinv;
-            points.push_back(uPt);
+            VectorXf result = f2fTransform*originalPt;
+            float ux = result(0,0)*fx/result(2,0);
+            float uy = result(1,0)*fy/result(2,0);
+            //if(i >= 179817) cout<<i<<endl;
+            if(ux < pixelWidth && uy < pixelHeight && ux >= 0 && uy >= 0){
+                //cout<<ux<<" "<<uy<<endl;
+                Point pixPt;
+                pixPt.z = 1.0;
+                pixPt.x = (ux-cx)*fxinv;
+                pixPt.y = (uy-cy)*fyinv;
+                float totalLength = sqrt(pow(pixPt.x, 2)+pow(pixPt.y, 2)+pow(pixPt.z, 2));
+                float normx = pixPt.x/totalLength, normy = pixPt.y/totalLength, normz = pixPt.z/totalLength;
+                float startx = 0, starty = 0, startz = 0;
+                float stepx = normx*voxelParams.voxSize, stepy = normy*voxelParams.voxSize, stepz = normz*voxelParams.voxSize;
+                float locx = startx, locy = starty, locz = startz, locxv = 0, locyv = 0, loczv = 0;
+                locxv = (locx+voxelParams.voxPhysLength/2)/voxelParams.voxSize;
+                locyv = (locy+voxelParams.voxPhysWidth/2)/voxelParams.voxSize;
+                loczv = (locz)/voxelParams.voxSize;
+                float curTSDF = interpolation(locxv, locyv, loczv, voxelsTSDF, voxelParams.voxNumz, voxelParams.voxNumx);
+                while(curTSDF > 0 && locxv < voxelParams.voxNumx && locxv >=0 && locyv < voxelParams.voxNumy && locyv >= 0 && loczv < voxelParams.voxNumz && loczv >= 0){
+                    //cout<<locxv<<" "<<locyv<<" "<<loczv<<endl;
+                    curTSDF = interpolation(locxv, locyv, loczv, voxelsTSDF, voxelParams.voxNumz, voxelParams.voxNumx);
+                    locxv = (locx+voxelParams.voxPhysLength/2)/voxelParams.voxSize;
+                    locyv = (locy+voxelParams.voxPhysWidth/2)/voxelParams.voxSize;
+                    loczv = (locz)/voxelParams.voxSize;
+                    locx += stepx;
+                    locy += stepy;
+                    locz += stepz;
+                }
+
+
+                if(locxv < voxelParams.voxNumx-1 && locxv > 0 && locyv < voxelParams.voxNumy-1 && locyv > 0 && loczv < voxelParams.voxNumz-1 && loczv > 0){
+                    //compute correspondences threshold
+                    Point globalPt;
+                    globalPt.x = locx;
+                    globalPt.y = locy;
+                    globalPt.z = locz;
+                    //globalPt = Vgk(u^), originalPt = V(u), Tzgk = curTransform
+                    VectorXf TgkVku = curTransform*originalPt;
+                    float vertexDistance = pow(TgkVku(0,0)-globalPt.x, 2)+pow(TgkVku(1,0)-globalPt.y, 2)+pow(TgkVku(2,0)-globalPt.z, 2);
+                    //compute Gradient
+                    float fz = voxelsTSDF[int(locyv)*voxelParams.voxNumx*voxelParams.voxNumz+int(locxv)*voxelParams.voxNumz+int(loczv)+1];
+                    fz-= voxelsTSDF[int(locyv)*voxelParams.voxNumx*voxelParams.voxNumz+int(locxv)*voxelParams.voxNumz+int(loczv)-1];
+                    float fx = voxelsTSDF[int(locyv)*voxelParams.voxNumx*voxelParams.voxNumz+int(locxv)*(voxelParams.voxNumz+1)+int(loczv)];
+                    fx -= voxelsTSDF[int(locyv)*voxelParams.voxNumx*voxelParams.voxNumz+int(locxv)*(voxelParams.voxNumz-1)+int(loczv)];
+                    float fy = voxelsTSDF[int(locyv)*(voxelParams.voxNumx*voxelParams.voxNumz+1)+int(locxv)*voxelParams.voxNumz+int(loczv)];
+                    fy-= voxelsTSDF[int(locyv)*(voxelParams.voxNumx*voxelParams.voxNumz-1)+int(locxv)*voxelParams.voxNumz+int(loczv)];
+                    float normLength1 = sqrt(pow(fx, 2)+pow(fy, 2)+pow(fz, 2));
+                    Point globalNormal;
+                    globalNormal.x = fx/normLength1;
+                    globalNormal.y = fy/normLength1;
+                    globalNormal.z = fz/normLength1;
+                    MatrixXf Rgk = curTransform.block<3,3>(0,0);
+                    VectorXf Nku(3);
+                    Nku << normals[i].x,
+                           normals[i].y,
+                           normals[i].z;
+                    MatrixXf RgkN = Rgk*Nku;
+                    float normLength2 = sqrt(pow(RgkN(0,0), 2)+pow(RgkN(1,0), 2)+pow(RgkN(2,0), 2));
+                    float cos = (globalNormal.x*RgkN(0,0)+globalNormal.y*RgkN(1,0)+globalNormal.z*RgkN(2,0))/(normLength1*normLength2);
+                    if(cos > epislonAng && vertexDistance<epislond){
+                        cout<<"hi"<<endl;
+                        prevVPts.push_back(globalPt);
+                        prevNVecs.push_back(globalNormal);
+                        Point globalPt;
+                        globalPt.x = result(0,0);
+                        globalPt.y = result(1,0);
+                        globalPt.z = result(2,0);
+                        globalVkPts.push_back(globalPt);
+                    }
+
+                }
+            }
         }
+        cout<<prevVPts.size()<<endl;
+        prevNVecs = computeNormal(prevVPts);
+        //cout<<"hi"<<endl;
+        for(int i = 0; i < globalVkPts.size(); i++){
+            MatrixXf G(3,6), Nprev(3,1), Vprev(3,1), Vgk(3,1);
+            G << 0, -1*globalVkPts[i].z, globalVkPts[i].y, 1, 0, 0,
+                globalVkPts[i].z, 0, -1*globalVkPts[i].x, 0, 1, 0,
+                -1*globalVkPts[i].y, globalVkPts[i].x, 0, 0, 0, 1;
+            Nprev << prevNVecs[i].x,
+                    prevNVecs[i].y,
+                    prevNVecs[i].z;
+            Vprev << prevVPts[i].x,
+                    prevVPts[i].y,
+                    prevVPts[i].z;
+            Vgk << globalVkPts[i].x,
+                globalVkPts[i].y,
+                globalVkPts[i].z;
+            MatrixXf newAt = G.transpose()*Nprev;
+            MatrixXf newAta = newAt*newAt.transpose();
+            MatrixXf newB = Nprev.transpose()*(Vprev-Vgk);
+            AtA += newAta;
+            b += newB;
+        }
+        VectorXf x = AtA.colPivHouseholderQr().solve(b);
+
+        Tinc << 1, x(2,0), -1*x(1,0), x(3,0),
+                -1*x(2,0), 1, x(0,0), x(4,0),
+                x(1,0), -1*x(0,0), 1, x(5,0);
+        curTransform = Tinc*curTransform.inverse();
+        f2fTransform = initTransform*curTransform;
     }
-    //MatrixXf Tgkprev()
-    //worldU = K * Tgkprev * u convert bak to 3d
-    //computePoints(worldU), computeNormal(v)
-    //prevICPPose
+    cout<<"icp finished"<<endl;
+    return curTransform;
 }
 
 int main(){
@@ -70,15 +163,15 @@ int main(){
     vector<string> imageNames = getImageNames("depth.txt");
     string firstImg = imageNames[0]+".png.bin";
     float *depthMap;
-    bool testmode = 1;
+    int testmode = 2;
     depthMap = getDepthMap(firstImg.c_str());
     surfaceMeasurement(depthMap);
     QuatPose pose(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
     MatrixXf tfo = qtransformation(Vector3f(pose.tx, pose.ty, pose.ty), pose.qx, pose.qy, pose.qz, pose.qw);
     vector<float> voxelsTSDF = createTSDF(depthMap, tfo.inverse());
     totalWeight++;
-    if(testmode == 0){
-        for(int i = 1; i < 5; i ++){
+    if(testmode == 1){
+        for(int i = 1; i < 15; i ++){
                 cout<<"Image No.";
                 cout<<i<<endl;
                 string img = imageNames[i]+".png.bin";
@@ -90,7 +183,20 @@ int main(){
                 MatrixXf tf = calibrationMtx.inverse()*ntf;
                 vector<float> newTSDF = createTSDF(depthMap, tf.inverse());
                 voxelsTSDF = fuseTSDF(voxelsTSDF, newTSDF);
+        }
     }
+    else if(testmode == 2){
+        MatrixXf tf = tfo;
+        for(int i = 1; i < 2; i ++){
+                cout<<"Image No.";
+                cout<<i<<endl;
+                string img = imageNames[i]+".png.bin";
+                float imgPose = stof(imageNames[i].substr(7,16));
+                depthMap = getDepthMap(img.c_str());
+                tf = getICPPose(tf, depthMap, voxelsTSDF);
+                vector<float> newTSDF = createTSDF(depthMap, tf.inverse());
+                voxelsTSDF = fuseTSDF(voxelsTSDF, newTSDF);
+        }
     }
     //validateTSDF(voxelsTSDF); //Used to validate TSDF
     MatrixXf viewAngle = transformation(Vector3f(0.0,0.0,0.0), 0.0, 0.0, 0.0);
