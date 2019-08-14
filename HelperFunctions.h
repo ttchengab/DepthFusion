@@ -17,6 +17,6 @@ using namespace std;
 QuatPose getNearestPose(float imageTime, const vector<string>& poses);
 void writeToPly(vector<Point> points, const char* fileName);
 float interpolation(float x, float y, const float *map, int width);
-float interpolation(float x, float y, float z,  const vector<float> &map3d, int depth, int width);
+float interpolation(float x, float y, float z,  const vector<Voxel> &map3d, int depth, int width);
 
 #endif

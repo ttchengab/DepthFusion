@@ -18,13 +18,14 @@
 #include "eigenlib/Eigen/Geometry"
 #endif
 #include "HelperFunctions.h"
+#include "ParamsInit.h"
 
 using namespace Eigen;
 using namespace std;
 
 MatrixXf transformation(const Vector3f &translation, float rotx, float roty, float rotz);
 MatrixXf qtransformation(const Vector3f &translation, float qx, float qy, float qz, float qw);
-void validateTSDF(const vector<float> &voxelsTSDF);
-void createTSDF(float* depthMap, MatrixXf tf, vector<float>& voxelsTSDF);
+void validateTSDF(const vector<Voxel>& voxelsTSDF);
+void createTSDF(float* depthMap, MatrixXf tf, vector<Voxel>& voxelsTSDF);
 
 #endif

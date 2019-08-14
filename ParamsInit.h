@@ -23,6 +23,9 @@ struct icpPose{
     float betta, gamma,alpha;
     float tx, ty, tz;
 };
+struct Voxel{
+    float value, weight;
+};
 class VoxelParams{
     public:
         float voxPhysLength, voxPhysWidth, voxPhysDepth;
@@ -38,7 +41,7 @@ class VoxelParams{
             voxVolume = voxNumx*voxNumy*voxNumz;
             voxSize = voxPhysLength/voxNumx;
             truncationThrs = voxSize*5;
-            truncationThrsInv = 1/truncationThrsInv;
+            truncationThrsInv = 1/truncationThrs;
         }
 };
 //Voxel Parameters Initialization
