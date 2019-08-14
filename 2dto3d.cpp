@@ -25,9 +25,8 @@
 
 using namespace Eigen;
 using namespace std;
-int totalWeight = 0;
-
-void rayCasting(const vector<float> &voxelsTSDF, MatrixXf rotation, float translationx, float translationy, float translationz){
+int totalWeight = 1;
+void rayCasting(const vector<Voxel>& voxelsTSDF, MatrixXf rotation, float translationx, float translationy, float translationz){
     float minimumDepth = 0;
     vector<Point>points;
     for(int y = 0; y < pixelHeight; y++){
@@ -57,6 +56,7 @@ void rayCasting(const vector<float> &voxelsTSDF, MatrixXf rotation, float transl
             locxv = (locx+voxelParams.voxPhysLength/2)/voxelParams.voxSize;
             locyv = (locy+voxelParams.voxPhysWidth/2)/voxelParams.voxSize;
             loczv = (locz)/voxelParams.voxSize;
+            
             float curTSDF = interpolation(locxv, locyv, loczv, voxelsTSDF, voxelParams.voxNumz, voxelParams.voxNumx);
             //locxv < voxelParams.voxNumx && locxv >=0 && locyv < voxelParams.voxNumy && locxv >=0 && loczv < voxelParams.voxNumz && locxv >=0
             while(curTSDF > 0 && locxv < voxelParams.voxNumx && locxv >=0 && locyv < voxelParams.voxNumy && locyv >= 0 && loczv < voxelParams.voxNumz && loczv >= 0){
@@ -69,8 +69,9 @@ void rayCasting(const vector<float> &voxelsTSDF, MatrixXf rotation, float transl
                 locy += stepy;
                 locz += stepz;
             }
-            if( locxv < voxelParams.voxNumx && locxv >= 0 && locyv < voxelParams.voxNumy && locyv >= 0 && loczv < voxelParams.voxNumz && loczv >= 0){
+            if(locxv < voxelParams.voxNumx && locxv >= 0 && locyv < voxelParams.voxNumy && locyv >= 0 && loczv < voxelParams.voxNumz && loczv >= 0){
                 Point currentPt;
+                //cout<<locx<<" "<<locy<<" "<<locz<<endl;
                 currentPt.x = locx;
                 currentPt.y = locy;
                 currentPt.z = locz;
@@ -83,20 +84,22 @@ void rayCasting(const vector<float> &voxelsTSDF, MatrixXf rotation, float transl
     writeToPly(points, "rayCastMesh0813.ply");
 }
 
-void fuseTSDF(vector<float>& voxelsTSDF, const vector<float>& newTSDF){
+void fuseTSDF(vector<Voxel>& voxelsTSDF, const vector<Voxel>& newTSDF){
     for(int y = 0; y < voxelParams.voxNumy; y++){
         for(int x = 0; x < voxelParams.voxNumx; x++){
             for(int z = 0; z < voxelParams.voxNumz; z++){
                 int i = z+x*voxelParams.voxNumz+y*voxelParams.voxNumz*voxelParams.voxNumx;
-                voxelsTSDF[i] = (voxelsTSDF[i]*totalWeight+newTSDF[i])/(totalWeight+1);
+                float totalWeight = voxelsTSDF[i].weight+newTSDF[i].weight;
+                if(totalWeight == 0) continue;
+                voxelsTSDF[i].value = (voxelsTSDF[i].value*voxelsTSDF[i].weight+newTSDF[i].value*newTSDF[i].weight)/totalWeight;
+                voxelsTSDF[i].weight = totalWeight;
             }
         }
     }
-    totalWeight++;
     cout<<"fusion finished"<<endl;
 }
 
-MatrixXf getICPPose(MatrixXf initTransform, float* depthMap, const vector<float> &voxelsTSDF){
+MatrixXf getICPPose(MatrixXf initTransform, float* depthMap, const vector<Voxel> &voxelsTSDF){
     //float x = (depthMap-cx)*z00*fxinv;
     MatrixXf f2fTransform = initTransform.inverse()*initTransform;
     MatrixXf curTransform = initTransform;
@@ -155,12 +158,12 @@ MatrixXf getICPPose(MatrixXf initTransform, float* depthMap, const vector<float>
                     VectorXf TgkVku = curTransform*originalPt;
                     float vertexDistance = pow(TgkVku(0,0)-globalPt.x, 2)+pow(TgkVku(1,0)-globalPt.y, 2)+pow(TgkVku(2,0)-globalPt.z, 2);
                     //compute Gradient
-                    float fz = voxelsTSDF[int(locyv)*voxelParams.voxNumx*voxelParams.voxNumz+int(locxv)*voxelParams.voxNumz+int(loczv)+1];
-                    fz-= voxelsTSDF[int(locyv)*voxelParams.voxNumx*voxelParams.voxNumz+int(locxv)*voxelParams.voxNumz+int(loczv)-1];
-                    float fx = voxelsTSDF[int(locyv)*voxelParams.voxNumx*voxelParams.voxNumz+int(locxv)*(voxelParams.voxNumz+1)+int(loczv)];
-                    fx -= voxelsTSDF[int(locyv)*voxelParams.voxNumx*voxelParams.voxNumz+int(locxv)*(voxelParams.voxNumz-1)+int(loczv)];
-                    float fy = voxelsTSDF[int(locyv)*(voxelParams.voxNumx*voxelParams.voxNumz+1)+int(locxv)*voxelParams.voxNumz+int(loczv)];
-                    fy-= voxelsTSDF[int(locyv)*(voxelParams.voxNumx*voxelParams.voxNumz-1)+int(locxv)*voxelParams.voxNumz+int(loczv)];
+                    float fz = voxelsTSDF[int(locyv)*voxelParams.voxNumx*voxelParams.voxNumz+int(locxv)*voxelParams.voxNumz+int(loczv)+1].value;
+                    fz-= voxelsTSDF[int(locyv)*voxelParams.voxNumx*voxelParams.voxNumz+int(locxv)*voxelParams.voxNumz+int(loczv)-1].value;
+                    float fx = voxelsTSDF[int(locyv)*voxelParams.voxNumx*voxelParams.voxNumz+int(locxv)*(voxelParams.voxNumz+1)+int(loczv)].value;
+                    fx -= voxelsTSDF[int(locyv)*voxelParams.voxNumx*voxelParams.voxNumz+int(locxv)*(voxelParams.voxNumz-1)+int(loczv)].value;
+                    float fy = voxelsTSDF[int(locyv)*(voxelParams.voxNumx*voxelParams.voxNumz+1)+int(locxv)*voxelParams.voxNumz+int(loczv)].value;
+                    fy-= voxelsTSDF[int(locyv)*(voxelParams.voxNumx*voxelParams.voxNumz-1)+int(locxv)*voxelParams.voxNumz+int(loczv)].value;
                     float normLength1 = sqrt(pow(fx, 2)+pow(fy, 2)+pow(fz, 2));
                     Point globalNormal;
                     globalNormal.x = fx/normLength1;
@@ -234,12 +237,14 @@ int main(){
     surfaceMeasurement(depthMap);
     QuatPose pose(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
     MatrixXf tfo = qtransformation(Vector3f(pose.tx, pose.ty, pose.ty), pose.qx, pose.qy, pose.qz, pose.qw);
-    vector<float> voxelsTSDF(voxelParams.voxVolume, 1.0);
-    vector<float> newTSDF(voxelParams.voxVolume, 1.0);
+    Voxel initVoxel;
+    initVoxel.value = 1;
+    initVoxel.weight = 0;
+    vector<Voxel> voxelsTSDF(voxelParams.voxVolume, initVoxel);
+    vector<Voxel> newTSDF(voxelParams.voxVolume, initVoxel);
     createTSDF(depthMap, tfo.inverse(), voxelsTSDF);
-    totalWeight++;
     if(testmode == 1){
-        for(int i = 1; i < 3; i ++){
+        for(int i = 1; i < 5; i ++){
                 cout<<"Image No.";
                 cout<<i<<endl;
                 string img = imageNames[i]+".png.bin";
@@ -266,7 +271,8 @@ int main(){
                 fuseTSDF(voxelsTSDF, newTSDF);
         }
     }
-    //validateTSDF(voxelsTSDF); //Used to validate TSDF
+    
+    validateTSDF(voxelsTSDF); //Used to validate TSDF
     MatrixXf viewAngle = transformation(Vector3f(0.0,0.0,0.0), 0.0, 0.0, 0.0);
     rayCasting(voxelsTSDF, viewAngle, 0.0, 0.0, 0.0);
     return 0;

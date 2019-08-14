@@ -23,14 +23,14 @@ MatrixXf qtransformation(const Vector3f &translation, float qx, float qy, float 
     return transformMatrix;
 }
 
-void validateTSDF(const vector<float> &voxelsTSDF){
+void validateTSDF(const vector<Voxel>& voxelsTSDF){
     vector<Point> points;
     Point currentPt;
-    for(int y = 0; y < voxelParams.voxNumx; y++){
+    for(int y = 0; y < voxelParams.voxNumy; y++){
         for(int x = 0; x < voxelParams.voxNumx; x++){
             for(int z = 0; z < voxelParams.voxNumz; z++){
                 int i = z+x*voxelParams.voxNumz+y*voxelParams.voxNumz*voxelParams.voxNumx;
-                if(fabs(voxelsTSDF[i])<0.2){
+                if(fabs(voxelsTSDF[i].value)<0.2){
                     currentPt.x = voxelParams.voxSize*(x+1)-voxelParams.voxSize/2;
                     currentPt.y = voxelParams.voxSize*(y+1)-voxelParams.voxSize/2;
                     currentPt.z = voxelParams.voxSize*(z+1)-voxelParams.voxSize/2;
@@ -39,12 +39,14 @@ void validateTSDF(const vector<float> &voxelsTSDF){
             }
         }
     }
-    writeToPly(points, "tsdfMesh.ply");
+    writeToPly(points, "tsdfMeshWTF.ply");
 }
 
-void createTSDF(float* depthMap, MatrixXf tf, vector<float>& voxelsTSDF){
-
-    std::fill_n(voxelsTSDF.begin(), voxelsTSDF.size(), 1);
+void createTSDF(float* depthMap, MatrixXf tf, vector<Voxel>& voxelsTSDF){
+    Voxel initVoxel;
+    initVoxel.value = 1;
+    initVoxel.weight = 0;
+    std::fill_n(voxelsTSDF.begin(), voxelsTSDF.size(), initVoxel);
 
     for(int y = 0; y < voxelParams.voxNumy; y++){
         for(int x = 0; x < voxelParams.voxNumx; x++){
@@ -81,10 +83,11 @@ void createTSDF(float* depthMap, MatrixXf tf, vector<float>& voxelsTSDF){
                     curVoxDistance = sqrt(pow(voxelx, 2)+pow(voxely, 2)+pow(voxelz, 2));
                     float SDF = curVoxDepth - curVoxDistance;
                     if(abs(SDF)<voxelParams.truncationThrs){
-                        voxelsTSDF[i] = SDF*voxelParams.truncationThrsInv;
+                        voxelsTSDF[i].value = SDF*voxelParams.truncationThrsInv;
+                        voxelsTSDF[i].weight += 1;
                     }
                     else if(SDF>0){
-                        voxelsTSDF[i] = 1;
+                        voxelsTSDF[i].value = 1;
                     }
                 }
 
@@ -93,5 +96,4 @@ void createTSDF(float* depthMap, MatrixXf tf, vector<float>& voxelsTSDF){
         }
     }
     cout<<"TSDF done"<<endl;
-    //return voxelsTSDF;
 }

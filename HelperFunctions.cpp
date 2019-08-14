@@ -61,30 +61,30 @@ float interpolation(float x, float y, const float *map, int width){
     float curVoxDepth = (d00*(1-weightx)+d10*weightx)*(1-weighty)+(d01*(1-weightx)+d11*weightx)*(weighty);
     return curVoxDepth;
 }
-float interpolation(float x, float y, float z,  const vector<float> &map3d, int depth, int width){
+float interpolation(float x, float y, float z,  const vector<Voxel> &map3d, int depth, int width){
     float interpolatedV;
     //cout<<x<<" "<<y<<" "<<z<<endl;
     if(floor(y+1)<256 && floor(x+1)<256 && floor(z+1)<512){
         float weightx = x-floor(x);
         float weighty = y-floor(y);
         float weightz = z-floor(z);
-        float f000 = map3d[int(y)*width*depth+int(x)*depth+int(z)];
-        float f001 = map3d[int(y)*width*depth+int(x)*depth+int(z+1)];
-        float f010 = map3d[int(y+1)*width*depth+int(x)*depth+int(z)];
-        float f011 = map3d[int(y+1)*width*depth+int(x)*depth+int(z+1)];
-        float f100 = map3d[int(y)*width*depth+int(x+1)*depth+int(z)];
-        float f101 = map3d[int(y)*width*depth+int(x+1)*depth+int(z+1)];
-        float f110 = map3d[int(y+1)*width*depth+int(x+1)*depth+int(z)];
-        float f111 = map3d[int(y+1)*width*depth+int(x+1)*depth+int(z+1)];
+        float f000 = map3d[int(y)*width*depth+int(x)*depth+int(z)].value;
+        float f001 = map3d[int(y)*width*depth+int(x)*depth+int(z+1)].value;
+        float f010 = map3d[int(y+1)*width*depth+int(x)*depth+int(z)].value;
+        float f011 = map3d[int(y+1)*width*depth+int(x)*depth+int(z+1)].value;
+        float f100 = map3d[int(y)*width*depth+int(x+1)*depth+int(z)].value;
+        float f101 = map3d[int(y)*width*depth+int(x+1)*depth+int(z+1)].value;
+        float f110 = map3d[int(y+1)*width*depth+int(x+1)*depth+int(z)].value;
+        float f111 = map3d[int(y+1)*width*depth+int(x+1)*depth+int(z+1)].value;
         float xy1 = (f000*(1-weightx)+f100*weightx)*(1-weighty)+(f010*(1-weightx)+f110*weightx)*weighty;
         float xy2 = (f001*(1-weightx)+f101*weightx)*(1-weighty)+(f011*(1-weightx)+f111*weightx)*weighty;
         interpolatedV = xy1*(1-weightz)+xy2*weightz;
     }
     else if(y != 256 && x != 256 && z!=512){
-         interpolatedV = map3d[int(y)*width*depth+int(x)*depth+int(z)];
+         interpolatedV = map3d[int(y)*width*depth+int(x)*depth+int(z)].value;
      }
     else{
-        interpolatedV = map3d[int(y-1)*width*depth+int(x-1)*depth+int(z-1)];
+        interpolatedV = map3d[int(y-1)*width*depth+int(x-1)*depth+int(z-1)].value;
     }
     return interpolatedV;
 }
