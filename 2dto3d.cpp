@@ -81,7 +81,7 @@ void rayCasting(const vector<Voxel>& voxelsTSDF, MatrixXf rotation, float transl
     }
     cout<<"Raycast done";
     //writeToPly(points, "rayCastMesh.txt");
-    writeToPly(points, "rayCastMesh0813.ply");
+    writeToPly(points, "rayCastMeshICP.ply");
 }
 
 void fuseTSDF(vector<Voxel>& voxelsTSDF, const vector<Voxel>& newTSDF){
@@ -101,13 +101,15 @@ void fuseTSDF(vector<Voxel>& voxelsTSDF, const vector<Voxel>& newTSDF){
 
 MatrixXf getICPPose(MatrixXf initTransform, float* depthMap, const vector<Voxel> &voxelsTSDF){
     //float x = (depthMap-cx)*z00*fxinv;
-    MatrixXf f2fTransform = initTransform.inverse()*initTransform;
     MatrixXf curTransform = initTransform;
+    cout<<"curTransform: "<<curTransform<<endl;
+    MatrixXf f2fTransform = initTransform.inverse()*curTransform;
+    cout<<"f2fTransform: "<<f2fTransform<<endl;
     vector<Point> points;
     computePoints(depthMap, points);
     vector<Point> normals;
     computeNormal(points, normals);
-    MatrixXf AtA, b;
+    MatrixXf At(6,1), AtA(6,6), b(1,1);
     MatrixXf Tinc(3, 4);
     for(int z = 1; z < 5; z++){
         vector<Point> prevVPts, globalVkPts, prevNVecs;
@@ -118,6 +120,7 @@ MatrixXf getICPPose(MatrixXf initTransform, float* depthMap, const vector<Voxel>
                         points[i].z,
                         1;
             VectorXf result = f2fTransform*originalPt;
+            //cout<<"result: "<<result<<endl;
             float ux = result(0,0)*fx/result(2,0);
             float uy = result(1,0)*fy/result(2,0);
             //if(i >= 179817) cout<<i<<endl;
@@ -146,17 +149,15 @@ MatrixXf getICPPose(MatrixXf initTransform, float* depthMap, const vector<Voxel>
                     locy += stepy;
                     locz += stepz;
                 }
-
-
                 if(locxv < voxelParams.voxNumx-1 && locxv > 0 && locyv < voxelParams.voxNumy-1 && locyv > 0 && loczv < voxelParams.voxNumz-1 && loczv > 0){
                     //compute correspondences threshold
-                    Point globalPt;
-                    globalPt.x = locx;
-                    globalPt.y = locy;
-                    globalPt.z = locz;
+                    Point globalprevPt;
+                    globalprevPt.x = locx;
+                    globalprevPt.y = locy;
+                    globalprevPt.z = locz;
                     //globalPt = Vgk(u^), originalPt = V(u), Tzgk = curTransform
                     VectorXf TgkVku = curTransform*originalPt;
-                    float vertexDistance = pow(TgkVku(0,0)-globalPt.x, 2)+pow(TgkVku(1,0)-globalPt.y, 2)+pow(TgkVku(2,0)-globalPt.z, 2);
+                    float vertexDistance = sqrt(pow(TgkVku(0,0)-globalprevPt.x, 2)+pow(TgkVku(1,0)-globalprevPt.y, 2)+pow(TgkVku(2,0)-globalprevPt.z, 2));
                     //compute Gradient
                     float fz = voxelsTSDF[int(locyv)*voxelParams.voxNumx*voxelParams.voxNumz+int(locxv)*voxelParams.voxNumz+int(loczv)+1].value;
                     fz-= voxelsTSDF[int(locyv)*voxelParams.voxNumx*voxelParams.voxNumz+int(locxv)*voxelParams.voxNumz+int(loczv)-1].value;
@@ -177,22 +178,23 @@ MatrixXf getICPPose(MatrixXf initTransform, float* depthMap, const vector<Voxel>
                     MatrixXf RgkN = Rgk*Nku;
                     float normLength2 = sqrt(pow(RgkN(0,0), 2)+pow(RgkN(1,0), 2)+pow(RgkN(2,0), 2));
                     float cos = (globalNormal.x*RgkN(0,0)+globalNormal.y*RgkN(1,0)+globalNormal.z*RgkN(2,0))/(normLength1*normLength2);
-                    cout<<cos<<" "<<vertexDistance<<endl;
-                    if(cos > epislonAng && vertexDistance<epislond){
-                        cout<<"hi"<<endl;
-                        prevVPts.push_back(globalPt);
+                    //cout<<cos<<" "<<vertexDistance<<endl;
+
+                    //decide the thresholds
+                    //if(cos > epislonAng && vertexDistance<epislond){
+                        //cout<<"hi"<<endl;
+                        prevVPts.push_back(globalprevPt);
                         prevNVecs.push_back(globalNormal);
                         Point globalPt;
-                        globalPt.x = result(0,0);
-                        globalPt.y = result(1,0);
-                        globalPt.z = result(2,0);
+                        globalPt.x = TgkVku(0,0);
+                        globalPt.y = TgkVku(1,0);
+                        globalPt.z = TgkVku(2,0);
                         globalVkPts.push_back(globalPt);
-                    }
-
+                    //}
                 }
             }
         }
-        cout<<prevVPts.size()<<endl;
+        cout<<"globalVkpt size: "<<globalVkPts.size()<<endl;
         //
         //cout<<"hi"<<endl;
         for(int i = 0; i < globalVkPts.size(); i++){
@@ -212,16 +214,22 @@ MatrixXf getICPPose(MatrixXf initTransform, float* depthMap, const vector<Voxel>
             MatrixXf newAt = G.transpose()*Nprev;
             MatrixXf newAta = newAt*newAt.transpose();
             MatrixXf newB = Nprev.transpose()*(Vprev-Vgk);
+            At += newAt;
             AtA += newAta;
             b += newB;
         }
-        VectorXf x = AtA.colPivHouseholderQr().solve(b);
-
+        MatrixXf Atb= At*b;
+        VectorXf x = AtA.colPivHouseholderQr().solve(Atb);
+        cout<<"X"<<endl<<x<<endl;
         Tinc << 1, x(2,0), -1*x(1,0), x(3,0),
                 -1*x(2,0), 1, x(0,0), x(4,0),
                 x(1,0), -1*x(0,0), 1, x(5,0);
         curTransform = Tinc*curTransform.inverse();
-        f2fTransform = initTransform*curTransform;
+        cout<<"Tinc:"<<endl<<Tinc<<endl;
+        cout<<"f2fTransform:"<<endl<<f2fTransform<<endl;
+        f2fTransform = initTransform.inverse()*curTransform;
+        cout<<"hmmm"<<endl;
+
     }
     cout<<"icp finished"<<endl;
     return curTransform;
@@ -232,7 +240,7 @@ int main(){
     vector<string> imageNames = getImageNames("depth.txt");
     string firstImg = imageNames[0]+".png.bin";
     float *depthMap;
-    int testmode = 1;
+    int testmode = 2;
     depthMap = getDepthMap(firstImg.c_str());
     surfaceMeasurement(depthMap);
     QuatPose pose(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
@@ -244,7 +252,7 @@ int main(){
     vector<Voxel> newTSDF(voxelParams.voxVolume, initVoxel);
     createTSDF(depthMap, tfo.inverse(), voxelsTSDF);
     if(testmode == 1){
-        for(int i = 1; i < 5; i ++){
+        for(int i = 1; i < 31; i ++){
                 cout<<"Image No.";
                 cout<<i<<endl;
                 string img = imageNames[i]+".png.bin";
