@@ -68,6 +68,7 @@ float interpolation(float x, float y, float z,  const vector<Voxel> &map3d, int 
         float weightx = x-floor(x);
         float weighty = y-floor(y);
         float weightz = z-floor(z);
+        vector<float> f;
         float f000 = map3d[int(y)*width*depth+int(x)*depth+int(z)].value;
         float f001 = map3d[int(y)*width*depth+int(x)*depth+int(z+1)].value;
         float f010 = map3d[int(y+1)*width*depth+int(x)*depth+int(z)].value;
@@ -76,15 +77,33 @@ float interpolation(float x, float y, float z,  const vector<Voxel> &map3d, int 
         float f101 = map3d[int(y)*width*depth+int(x+1)*depth+int(z+1)].value;
         float f110 = map3d[int(y+1)*width*depth+int(x+1)*depth+int(z)].value;
         float f111 = map3d[int(y+1)*width*depth+int(x+1)*depth+int(z+1)].value;
+        f.push_back(f000);
+        f.push_back(f001);
+        f.push_back(f010);
+        f.push_back(f011);
+        f.push_back(f100);
+        f.push_back(f101);
+        f.push_back(f110);
+        f.push_back(f111);
+        float maxf = f[0], minf = f[0];
+        for(int i = 1; i < f.size(); i++){
+            if(f[i]>maxf) maxf = f[i];
+            if(f[i]<minf) minf = f[i];
+        }
+        if(maxf-minf > 1){
+            return -2;
+        }
         float xy1 = (f000*(1-weightx)+f100*weightx)*(1-weighty)+(f010*(1-weightx)+f110*weightx)*weighty;
         float xy2 = (f001*(1-weightx)+f101*weightx)*(1-weighty)+(f011*(1-weightx)+f111*weightx)*weighty;
         interpolatedV = xy1*(1-weightz)+xy2*weightz;
     }
-    else if(y != 256 && x != 256 && z!=512){
+    else if(y != voxelParams.voxNumy && x != voxelParams.voxNumx && z!= voxelParams.voxNumz){
          interpolatedV = map3d[int(y)*width*depth+int(x)*depth+int(z)].value;
+         return -2;
      }
     else{
         interpolatedV = map3d[int(y-1)*width*depth+int(x-1)*depth+int(z-1)].value;
+        return -2;
     }
     return interpolatedV;
 }
