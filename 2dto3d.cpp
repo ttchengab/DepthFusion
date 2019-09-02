@@ -80,7 +80,7 @@ void rayCasting(const vector<Voxel>& voxelsTSDF, MatrixXf rotation, float transl
     }
     cout<<"Raycast done";
     //writeToPly(points, "rayCastMesh.txt");
-    writeToPly(points, "rayCastMeshICP.ply");
+    writeToPly(points, "rayCastMeshFuse.ply");
 }
 
 void fuseTSDF(vector<Voxel>& voxelsTSDF, const vector<Voxel>& newTSDF){
@@ -113,6 +113,7 @@ MatrixXf getICPPose(MatrixXf initTransform, float* depthMap, const vector<Voxel>
     for(int z = 1; z < 5; z++){
         vector<Point> prevVPts, globalVkPts, prevNVecs;
         int flag1 = 0;
+        if(z == 2) cout<<"here"<<endl;
         for(int i = 0; i < points.size(); i++){
             VectorXf originalPt(4);
             originalPt << points[i].x,
@@ -264,6 +265,8 @@ MatrixXf getICPPose(MatrixXf initTransform, float* depthMap, const vector<Voxel>
             Vgk << globalVkPts[i].x,
                 globalVkPts[i].y,
                 globalVkPts[i].z;
+            //cout<<"New Vector set"<<endl;
+            //cout<<G<<" "<<Nprev<<" "<<Vprev<<" "<<Vgk<<endl;
             MatrixXf newAt = G.transpose()*Nprev;
             MatrixXf newAta = newAt*newAt.transpose();
             MatrixXf newB = Nprev.transpose()*(Vprev-Vgk);
@@ -276,19 +279,34 @@ MatrixXf getICPPose(MatrixXf initTransform, float* depthMap, const vector<Voxel>
                 cout<<"b"<<endl<<b<<endl;
             }
         }
-        MatrixXf Atb= At*b;
-        //cout<<"AtA"<<endl<<AtA<<endl;
-        //cout<<"Atb"<<endl<<Atb<<endl;
+        MatrixXf Atb = At*b;
+        cout<<"AtA"<<endl<<AtA<<endl;
+        cout<<"Atb"<<endl<<Atb<<endl;
         VectorXf x = AtA.colPivHouseholderQr().solve(Atb);
-        //cout<<"X"<<endl<<x<<endl;
+        cout<<"X"<<endl<<x<<endl;
+
         Tinc << 1, x(2,0), -1*x(1,0), x(3,0),
                 -1*x(2,0), 1, x(0,0), x(4,0),
                 x(1,0), -1*x(0,0), 1, x(5,0);
-        curTransform = Tinc*curTransform.inverse();
-        // cout<<"Tinc:"<<endl<<Tinc<<endl;
-        // cout<<"f2fTransform:"<<endl<<f2fTransform<<endl;
+        /*
+        curTransform.block<3,4>(0,0) = Tinc*curTransform.inverse();
+        curTransform(3,0) = 0;
+        curTransform(3,1) = 0;
+        curTransform(3,2) = 0;
+        curTransform(3,3) = 1;
+        */
+        MatrixXf curTransform34 = Tinc*curTransform.inverse();
+
+        curTransform.block<3,4>(0,0) = curTransform34;
+        curTransform(3,0) = 0;
+        curTransform(3,1) = 0;
+        curTransform(3,2) = 0;
+        curTransform(3,3) = 1;
+        cout<<"Tinc:"<<endl<<Tinc<<endl;
+        cout<<"curTransformOrg"<<endl<<curTransform34<<endl;
+        cout<<"curTransform"<<endl<<curTransform<<endl;
         f2fTransform = initTransform.inverse()*curTransform;
-        //cout<<"hmmm"<<endl;
+        cout<<"f2fTransform:"<<endl<<f2fTransform<<endl;
 
     }
     cout<<"icp finished"<<endl;
