@@ -16,6 +16,6 @@
 using namespace std;
 void computePoints(float *depthMap, vector<Point>& points);
 void computeNormal(const vector<Point>& vertexMap, vector<Point>& normalVectors);
-void surfaceMeasurement(float *depthMap);
+void surfaceMeasurement(float *depthMap, vector<Point>& vertexMap, vector<Point>& normalMap);
 
 #endif
