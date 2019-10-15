@@ -35,6 +35,42 @@ void writeToPly(vector<Point> points, const char* fileName){
     fclose (bfile);
 }
 
+void writeToPlyNorm(vector<Point> points, vector<Point> normals, const char* fileName){
+    string s = "ply\nformat ascii 1.0\nelement vertex "+to_string(points.size())+"\nproperty float x\nproperty float y\nproperty float z\n";
+    s = s+"property uchar red\nproperty uchar green\nproperty uchar blue\nend_header\n";
+    FILE * bfile;
+    bfile = fopen (fileName, "wb");
+    unsigned int N(s.size());
+    fwrite(s.c_str(),1, N ,bfile);
+    float maxNormx=normals[0].x, maxNormy=normals[0].y, maxNormz=normals[0].z;
+    float minNormx=normals[0].x, minNormy=normals[0].y, minNormz=normals[0].z;
+    for(int i = 0; i < points.size(); i++){
+      if(maxNormx < normals[i].x) maxNormx=normals[i].x;
+      if(maxNormy < normals[i].y) maxNormy=normals[i].y;
+      if(maxNormz < normals[i].z) maxNormz=normals[i].z;
+
+      if(minNormx > normals[i].x) minNormx=normals[i].x;
+      if(minNormy > normals[i].y) minNormy=normals[i].y;
+      if(minNormz > normals[i].z) minNormz=normals[i].z;
+    }
+    // cout<<maxNormx<<" "<<maxNormy<<" "<<maxNormz<<endl;
+    // cout<<minNormx<<" "<<minNormy<<" "<<minNormz<<endl;
+    for(int i = 0; i < points.size(); i++){
+      normals[i].x = (maxNormx-normals[i].x)/(maxNormx-minNormx)*255;
+      normals[i].y = (maxNormy-normals[i].y)/(maxNormy-minNormy)*255;
+      normals[i].z = (maxNormz-normals[i].z)/(maxNormz-minNormz)*255;
+    }
+    for(int i = 0; i < points.size(); i++){
+        string pointS = to_string(points[i].x)+" "+to_string(points[i].y)+" "+to_string(points[i].z)+" ";
+        pointS = pointS+to_string(int(normals[i].x))+" "+to_string(int(normals[i].y))+" "+to_string(int(normals[i].z));
+        if(i != points.size()-1) pointS = pointS+"\n";
+        unsigned int Ns(pointS.size());
+        fwrite(pointS.c_str(),1,Ns,bfile);
+    }
+    fflush(bfile);
+    fclose (bfile);
+}
+
 //Interpolation 2 dimensional and 3 dimensional
 float interpolation(float x, float y, const float *map, int width){
     float weightx = x-floor(x);
