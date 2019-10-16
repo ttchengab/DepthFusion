@@ -87,7 +87,7 @@ void rayCasting(const vector<Voxel>& voxelsTSDF, MatrixXf rotation, float transl
     }
     cout<<"Raycast done";
     //writeToPly(points, "rayCastMesh.txt");
-    writeToPly(points, "rayCastMesh1006.ply");
+    writeToPly(points, "rayCastMesh1016.ply");
 }
 
 void fuseTSDF(vector<Voxel>& voxelsTSDF, const vector<Voxel>& newTSDF){
@@ -105,74 +105,75 @@ void fuseTSDF(vector<Voxel>& voxelsTSDF, const vector<Voxel>& newTSDF){
     cout<<"fusion finished"<<endl;
 }
 
-void computeProjPix(const Point& point, float＆ ux, float uy){
+void computeProjPix(const Point& point, float& ux, float uy, const MatrixXf& f2fTransform){
   VectorXf originalPt(4);
-  originalPt << points[i].x,
-              points[i].y,
-              points[i].z,
+  originalPt << point.x,
+              point.y,
+              point.z,
               1;
   VectorXf result = f2fTransform*originalPt;
   ux = result(0,0)*fx/result(2,0);
   uy = result(1,0)*fy/result(2,0);
 }
 void computeNormal(Point& normal, float x, float y, float z, const vector<Voxel> &voxelsTSDF){
-    float fx = voxelsTSDF[floor(y)*voxelParams.voxNumx*voxelParams.voxNumz+floor(x+1)*voxelsParams.voxNumz+floor(z)];
-    fx -= voxelsTSDF[floor(y)*voxelParams.voxNumx*voxelParams.voxNumz+floor(x)*voxelsParams.voxNumz+floor(z)];
-    float fy = voxelsTSDF[floor(y+1)*voxelParams.voxNumx*voxelParams.voxNumz+floor(x)*voxelsParams.voxNumz+floor(z)];
-    fy -= voxelsTSDF[floor(y)*voxelParams.voxNumx*voxelParams.voxNumz+floor(x)*voxelsParams.voxNumz+floor(z)];
-    float fz = voxelsTSDF[floor(y)*voxelParams.voxNumx*voxelParams.voxNumz+floor(x+1)*voxelsParams.voxNumz+floor(z+1)];
-    fz -= voxelsTSDF[floor(y)*voxelParams.voxNumx*voxelParams.voxNumz+floor(x)*voxelsParams.voxNumz+floor(z)];
+    float fx = voxelsTSDF[int(y)*voxelParams.voxNumx*voxelParams.voxNumz+int(x+1)*voxelParams.voxNumz+int(z)].value;
+    fx -= voxelsTSDF[floor(y)*voxelParams.voxNumx*voxelParams.voxNumz+floor(x)*voxelParams.voxNumz+int(z)].value;
+    float fy = voxelsTSDF[int(y+1)*voxelParams.voxNumx*voxelParams.voxNumz+int(x)*voxelParams.voxNumz+int(z)].value;
+    fy -= voxelsTSDF[int(y)*voxelParams.voxNumx*voxelParams.voxNumz+int(x)*voxelParams.voxNumz+int(z)].value;
+    float fz = voxelsTSDF[int(y)*voxelParams.voxNumx*voxelParams.voxNumz+int(x+1)*voxelParams.voxNumz+int(z+1)].value;
+    fz -= voxelsTSDF[int(y)*voxelParams.voxNumx*voxelParams.voxNumz+int(x)*voxelParams.voxNumz+int(z)].value;
     float normalLength = sqrt(pow(fx, 2)+pow(fy, 2)+pow(fz, 2));
     normal.x = fx/normalLength;
     normal.y = fx/normalLength;
     normal.z = fx/normalLength;
 }
-bool checkOmega(Point Vcur, Point Vglob, Point Ncur, Point Nglob, MatrixXf& f2fTransform, float Ed, float Etheta){
+bool checkOmega(Point Vcur, Point Vglob, Point Ncur, Point Nglob, MatrixXf& curTransform, float Ed, float Etheta){
     VectorXf temp(4);
     temp(0,0) = Vcur.x;
     temp(1,0) = Vcur.y;
     temp(2,0) = Vcur.z;
     temp(3,0) = 1;
-    VectorXf Vku = f2fTransform*temp;
+    VectorXf Vku = curTransform*temp;
     float length = sqrt(pow(Vku(0,0)-Vglob.x, 2)+pow(Vku(1,0)-Vglob.y, 2)+pow(Vku(2,0)-Vglob.z, 2));
     VectorXf Nku(3);
     Nku << Ncur.x,
            Ncur.y,
            Ncur.z;
+    MatrixXf Rgk = curTransform.block<3,3>(0,0);
     MatrixXf RgkN = Rgk*Nku;
-    float normLength1 = sqrt(pow(RgkN(0,0), 2)+pow(RgkN(1,0), 2)+pow(Rgkn(2,0), 2));
+    float normLength1 = sqrt(pow(RgkN(0,0), 2)+pow(RgkN(1,0), 2)+pow(RgkN(2,0), 2));
     float normLength2 = sqrt(pow(Nglob.x, 2)+pow(Nglob.y, 2)+pow(Nglob.z, 2));
-    float angle = acos((Nglob*RgkN(0,0)+Nglob*RgkN(1,0)+Nglob*RgkN(2,0))/(normLength1*normLength2));
+    float angle = acos((Nglob.x*RgkN(0,0)+Nglob.y*RgkN(1,0)+Nglob.z*RgkN(2,0))/(normLength1*normLength2));
     return (length <= Ed && angle >=Etheta);
 
 }
-void sumAt(const vector<Point>& Vk, const vector<Point>& Nglob, const MatrixXf& At){
+void sumAt(const vector<Point>& Vk, const vector<Point>& Nglob, MatrixXf& At){
     for(int i = 0; i < Vk.size(); i++){
         MatrixXf G(3,6), Nprev(3,1);
         G << 0, -1*Vk[i].z, Vk[i].y, 1, 0, 0,
             Vk[i].z, 0, -1*Vk[i].x, 0, 1, 0,
             -1*Vk[i].y, Vk[i].x, 0, 0, 0, 1;
-        Nprev << Nglob.x,
-                Nglob.y,
-                Nglob.z;
-        Matrix newAt = G.transpose()*Nprev;
+        Nprev << Nglob[i].x,
+                Nglob[i].y,
+                Nglob[i].z;
+        MatrixXf newAt = G.transpose()*Nprev;
         At = At+newAt;
     }
 }
-void sumB(const vector<Point>& Vk, const vector<Point>& Nglob, const vector<Point>& Vglob, const MatrixXf& B){
+void sumB(const vector<Point>& Vk, const vector<Point>& Nglob, const vector<Point>& Vglob, MatrixXf& B){
     for(int i = 0; i < Vk.size(); i++){
         MatrixXf Nprev(3,1), Vgk(3,1), Vprev(3,1);
-        Nprev << Nglob.x,
-                Nglob.y,
-                Nglob.z;
-        Vprev << Vglob.x,
-                Vglob.y,
-                Vglob.z;
-        Vgk << Vk.x,
-              Vk.y,
-              Vk.z;
-        Matrix newB = Nprev.transpose()*(Vprev-Vgk);
-        B = B+newB
+        Nprev << Nglob[i].x,
+                Nglob[i].y,
+                Nglob[i].z;
+        Vprev << Vglob[i].x,
+                Vglob[i].y,
+                Vglob[i].z;
+        Vgk << Vk[i].x,
+              Vk[i].y,
+              Vk[i].z;
+        MatrixXf newB = Nprev.transpose()*(Vprev-Vgk);
+        B = B+newB;
     }
 }
 void updateTinc(VectorXf& x, MatrixXf& curTransform, MatrixXf& f2fTransform, const MatrixXf& initTransform){
@@ -192,16 +193,14 @@ MatrixXf getICPPose(MatrixXf initTransform, const vector<Point> vertexMap, const
     MatrixXf f2fTransform = initTransform.inverse()*curTransform;
     for(int z = 1; z<5; z++){
       vector<Point> Vk, Nk, Vglob, Nglob;
-      MatrixXf At(6,1);
-      At << 0,0,0,0,0,0;
       for(int i = 0; i < vertexMap.size(); i++){
-          projUx = 0;
-          projUy = 0;
-          computeProjPix(vertexMap[i], projUx, projUy);
+          float projUx = 0;
+          float projUy = 0;
+          computeProjPix(vertexMap[i], projUx, projUy, f2fTransform);
           if(projUx < pixelWidth && projUy < pixelHeight && projUx >= 0 && projUy >= 0){
             //think about the transform before raycast
             //bool pointExist = pointRayCast()
-              MatrixXf rotationMtx = curTransform<3,3>(0,0);
+              MatrixXf rotationMtx = curTransform.block<3,3>(0,0);
               float transX = curTransform(3,0);
               float transY = curTransform(3,1);
               float transZ = curTransform(3,2);
@@ -209,13 +208,13 @@ MatrixXf getICPPose(MatrixXf initTransform, const vector<Point> vertexMap, const
               bool pointExist = pointRayCast(raycastPt, voxelsTSDF, projUx, projUy, 0, rotationMtx, transX, transY, transZ);
               if(pointExist){
                   Point raycastNorm;
-                  float voxelX = (pointExist.x+voxelParams.voxPhysLength/2)/voxelParams.voxSize;
-                  float voxelY = (pointExist.y+voxelParams.voxPhysLength/2)/voxelParams.voxSize;
-                  float voxelZ = pointExist.z/voxelParams.voxSize;
-                  computeNormal(raycastNorm, voxelX, voxelY, voxelZ);
-                  if(checkOmega(vertexMap[i], raycastPt, normalMap[i],raycastNorm, f2fTransform, 0.1, 3.14/6)){
+                  float voxelX = (raycastPt.x+voxelParams.voxPhysLength/2)/voxelParams.voxSize;
+                  float voxelY = (raycastPt.y+voxelParams.voxPhysLength/2)/voxelParams.voxSize;
+                  float voxelZ = raycastPt.z/voxelParams.voxSize;
+                  computeNormal(raycastNorm, voxelX, voxelY, voxelZ, voxelsTSDF);
+                  if(checkOmega(vertexMap[i], raycastPt, normalMap[i],raycastNorm, curTransform, 0.1, 3.14/6)){
                       Vk.push_back(vertexMap[i]);
-                      Vglob.puth_back(raycastPt);
+                      Vglob.push_back(raycastPt);
                       Nk.push_back(normalMap[i]);
                       Nglob.push_back(raycastNorm);
                   }
@@ -223,14 +222,17 @@ MatrixXf getICPPose(MatrixXf initTransform, const vector<Point> vertexMap, const
           }
       }
       MatrixXf At(6,1);
-      sumAt();
-      sumB();
+      At << 0,0,0,0,0,0;
+      MatrixXf B(1,1);
+      B << 0;
+      sumAt(Vk, Nglob, At);
+      sumB(Vk, Nglob, Vglob, B);
       MatrixXf AtA = At*At.transpose();
-      MatrixXf Atb = At*b;
+      MatrixXf Atb = At*B;
       VectorXf x = AtA.colPivHouseholderQr().solve(Atb);
       updateTinc(x, curTransform, f2fTransform, initTransform);
     }
-    return curTransform;
+    return curTransform.inverse();
 }
 
 int main(){
@@ -238,7 +240,7 @@ int main(){
     vector<string> imageNames = getImageNames("depth.txt");
     string firstImg = imageNames[0]+".png.bin";
     float *depthMap;
-    int testmode = 0;
+    int testmode = 2;
     depthMap = getDepthMap(firstImg.c_str());
     vector<Point> vertexMap, normalMap;
     QuatPose pose(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
