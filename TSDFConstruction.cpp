@@ -74,13 +74,23 @@ void createTSDF(float* depthMap, MatrixXf tf, vector<Voxel>& voxelsTSDF){
                 onScreeny = (voxely*fy)/voxelz+cy-0.5;
                 // //Computing Voxel Depth
                 if(onScreenx < pixelWidth && onScreeny < pixelHeight && onScreenx >= 0 && onScreeny >= 0){
-                    curVoxDepth = interpolation(onScreenx, onScreeny, depthMap, pixelWidth);
+                    // if(INTERPOLATE){
+                        curVoxDepth = interpolation(onScreenx, onScreeny, depthMap, pixelWidth);
+                    // }
+                    // else{
+                    //     //cout<<"hwerer";
+                    //     float z00 = depthMap[int(onScreeny)*pixelWidth+int(onScreenx)];
+                    //     float x00 = (floor(onScreenx)-cx)*z00*fxinv;
+                    //     float y00 = (floor(onScreeny)-cy)*z00*fyinv;
+                    //     curVoxDepth = sqrt(pow(x00, 2)+pow(y00, 2)+pow(z00, 2));
+                    // }
                     // float z00 = depthMap[int(onScreeny)*pixelWidth+int(onScreenx)];
                     // float x00 = (floor(onScreenx)-cx)*z00*fxinv;
                     // float y00 = (floor(onScreeny)-cy)*z00*fyinv;
                     // curVoxDepth = sqrt(pow(x00, 2)+pow(y00, 2)+pow(z00, 2));
                     if(curVoxDepth < 0) continue; //depth isn't normal
                     curVoxDistance = sqrt(pow(voxelx, 2)+pow(voxely, 2)+pow(voxelz, 2));
+                    // curVoxDistance = voxelz;
                     float SDF = curVoxDepth - curVoxDistance;
                     if(abs(SDF)<voxelParams.truncationThrs){
                         voxelsTSDF[i].value = SDF*voxelParams.truncationThrsInv;

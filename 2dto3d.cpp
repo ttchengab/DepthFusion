@@ -25,6 +25,7 @@
 
 using namespace Eigen;
 using namespace std;
+using namespace std::chrono;
 int totalWeight = 1;
 
 bool pointRayCast(Point & currentPt, const vector<Voxel>& voxelsTSDF, float x, float y, float minimumDepth, MatrixXf rotation, float translationx, float translationy, float translationz){
@@ -55,7 +56,12 @@ bool pointRayCast(Point & currentPt, const vector<Voxel>& voxelsTSDF, float x, f
     //locxv < voxelParams.voxNumx && locxv >=0 && locyv < voxelParams.voxNumy && locxv >=0 && loczv < voxelParams.voxNumz && locxv >=0
     while(curTSDF > 0 && locxv < voxelParams.voxNumx && locxv >=0 && locyv < voxelParams.voxNumy && locyv >= 0 && loczv < voxelParams.voxNumz && loczv >= 0){
         //cout<<locxv<<" "<<locyv<<" "<<loczv<<endl;
-        curTSDF = interpolation(locxv, locyv, loczv, voxelsTSDF, voxelParams.voxNumz, voxelParams.voxNumx);
+        if(INTERPOLATE){
+            curTSDF = interpolation(locxv, locyv, loczv, voxelsTSDF, voxelParams.voxNumz, voxelParams.voxNumx);
+        }
+        else{
+            curTSDF = voxelsTSDF[int(locyv)*voxelParams.voxNumx*voxelParams.voxNumz+int(locxv)*voxelParams.voxNumz+int(loczv)].value;
+        }
         locxv = (locx+voxelParams.voxPhysLength/2)/voxelParams.voxSize;
         locyv = (locy+voxelParams.voxPhysWidth/2)/voxelParams.voxSize;
         loczv = (locz)/voxelParams.voxSize;
@@ -86,7 +92,7 @@ void rayCasting(const vector<Voxel>& voxelsTSDF, MatrixXf rotation, float transl
     }
     cout<<"Raycast done";
     //writeToPly(points, "rayCastMesh.txt");
-    writeToPly(points, "rayCastMeshICP.ply");
+    writeToPly(points, "rayCastMeshTSDF0226.ply");
 }
 
 void fuseTSDF(vector<Voxel>& voxelsTSDF, const vector<Voxel>& newTSDF){
@@ -188,6 +194,9 @@ void updateTinc(VectorXf& x, MatrixXf& curTransform, MatrixXf& f2fTransform, con
     Tinc << 1, x(2,0), -1*x(1,0), x(3,0),
             -1*x(2,0), 1, x(0,0), x(4,0),
             x(1,0), -1*x(0,0), 1, x(5,0);
+    cout<<"curTransform"<<endl<<curTransform<<endl;
+    cout<<"f2fTransform"<<endl<<f2fTransform<<endl;
+    cout<<"initTransform"<<endl<<initTransform<<endl;
     curTransform.block<3,4>(0,0) = Tinc*curTransform.inverse();
     curTransform(3,0) = 0;
     curTransform(3,1) = 0;
@@ -198,8 +207,9 @@ void updateTinc(VectorXf& x, MatrixXf& curTransform, MatrixXf& f2fTransform, con
 MatrixXf getICPPose(MatrixXf initTransform, const vector<Point> vertexMap, const vector<Point> normalMap, const vector<Voxel> &voxelsTSDF){
     MatrixXf curTransform = initTransform;
     MatrixXf f2fTransform = initTransform.inverse()*curTransform;
-    for(int z = 1; z<5; z++){
+    for(int z = 1; z<3; z++){
       vector<Point> Vk, Nk, Vglob, Nglob;
+      int check = 0;
       for(int i = 0; i < vertexMap.size(); i++){
           float projUx = 0;
           float projUy = 0;
@@ -226,7 +236,10 @@ MatrixXf getICPPose(MatrixXf initTransform, const vector<Point> vertexMap, const
                   // cout<<normalMap[i].x<<" "<<normalMap[i].y<<" "<<normalMap[i].z<<endl;
                   // cout<<raycastNorm.x<<" "<<raycastNorm.y<<" "<<raycastNorm.z<<endl;
                   // cout<<"----------"<<endl;
+              //TODO: DEBUG CHECKOMEGA
+
                   if(checkOmega(vertexMap[i], raycastPt, normalMap[i],raycastNorm, curTransform, 0.1, 3.14/6)){
+                      check = 1;
                       cout<<"threshold passed"<<endl;
                       Vk.push_back(vertexMap[i]);
                       Vglob.push_back(raycastPt);
@@ -236,18 +249,22 @@ MatrixXf getICPPose(MatrixXf initTransform, const vector<Point> vertexMap, const
             }
           }
       }
+      if(check == 0){
+        continue;
+      }
       MatrixXf At(6,1);
       At << 0,0,0,0,0,0;
       MatrixXf B(1,1);
       B << 0;
       sumAt(Vk, Nglob, At);
-      cout<<At<<endl;
       sumB(Vk, Nglob, Vglob, B);
       MatrixXf AtA = At*At.transpose();
       MatrixXf Atb = At*B;
       VectorXf x = AtA.colPivHouseholderQr().solve(Atb);
+      cout<<"AtA"<<endl<<AtA<<endl;
+      cout<<"AtB"<<endl<<Atb<<endl;
+      cout<<"x"<<endl<<x<<endl;
       updateTinc(x, curTransform, f2fTransform, initTransform);
-      cout<<curTransform<<endl;
     }
     cout<<"icp finished"<<endl;
     return curTransform.inverse();
@@ -258,7 +275,7 @@ int main(){
     vector<string> imageNames = getImageNames("depth.txt");
     string firstImg = imageNames[0]+".png.bin";
     float *depthMap;
-    int testmode = 2;
+    int testmode = 0;
     depthMap = getDepthMap(firstImg.c_str());
     vector<Point> vertexMap, normalMap;
     QuatPose pose(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
@@ -302,6 +319,10 @@ int main(){
 
     //validateTSDF(voxelsTSDF); //Used to validate TSDF
     MatrixXf viewAngle = transformation(Vector3f(0.0,0.0,0.0), 0.0, 0.0, 0.0);
+    chrono::high_resolution_clock::time_point t1 = chrono::high_resolution_clock::now();
     rayCasting(voxelsTSDF, viewAngle, 0.0, 0.0, 0.0);
+    chrono::high_resolution_clock::time_point t2 = chrono::high_resolution_clock::now();
+    duration<double> time_span = duration_cast<duration<double> >(t2 - t1);
+    cout << "Raycast took " << time_span.count() << " seconds."<<endl;
     return 0;
 }
