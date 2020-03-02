@@ -8,3 +8,6 @@ Compile with the command:
 
 Change testmode between 1 and 2 in 2dto3d.cpp to get the fusion from known data or from icp. A ply file will be generated from running the program, and it can be visualized via tools such as Meshlab.
 
+An explanation of the code can be found here:
+https://medium.com/@taying.cheng/understanding-real-time-3d-reconstruction-and-kinectfusion-33d61d1cd402#3fe5-fcb284305ef2
+
