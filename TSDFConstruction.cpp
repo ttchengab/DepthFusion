@@ -39,7 +39,7 @@ void validateTSDF(const vector<Voxel>& voxelsTSDF){
             }
         }
     }
-    writeToPly(points, "tsdfMeshOrg.ply");
+    writeToPly(points, "meshes/FYPTSDFMesh.ply");
 }
 
 void createTSDF(float* depthMap, MatrixXf tf, vector<Voxel>& voxelsTSDF){

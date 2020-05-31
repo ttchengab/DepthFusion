@@ -47,7 +47,7 @@ void computeNormal(const vector<Point>& vertexMap, vector<Point>& normalVectors)
         normalVec.y = v.x*u.z-u.x*v.z;
         normalVec.z = u.x*v.y-v.x*u.y;
         normalVectors.push_back(normalVec);
-        //cout<<normalVec.x<<" "<<normalVec.y<<" "<<normalVec.z<<endl;
+        // cout<<normalVec.x<<" "<<normalVec.y<<" "<<normalVec.z<<endl;
         if(abs(normalVec.x)>0.1 || abs(normalVec.y)>0.1 || abs(normalVec.z)>0.1){
           count++;
           vm.push_back(vertexMap[i]);
@@ -62,8 +62,6 @@ void surfaceMeasurement(float *depthMap, vector<Point>& vertexMap, vector<Point>
     normalMap.clear();
     computePoints(depthMap, vertexMap);
     computeNormal(vertexMap, normalMap);
-    writeToPlyNorm(vertexMap, normalMap, "testMeshNorm.ply");
-    //computeNormal(vertexMap, );
-    //test normal map
+    writeToPly(vertexMap, "meshes/surfaceMesh0429.ply");
     cout<<"surface measurement finished"<<endl;
 }

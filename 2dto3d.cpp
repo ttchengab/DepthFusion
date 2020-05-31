@@ -92,7 +92,7 @@ void rayCasting(const vector<Voxel>& voxelsTSDF, MatrixXf rotation, float transl
     }
     cout<<"Raycast done";
     //writeToPly(points, "rayCastMesh.txt");
-    writeToPly(points, "rayCastMeshTSDF0226.ply");
+    writeToPly(points, "meshes/FYPRayCastMesh.ply");
 }
 
 void fuseTSDF(vector<Voxel>& voxelsTSDF, const vector<Voxel>& newTSDF){
@@ -121,18 +121,33 @@ void computeProjPix(const Point& point, float& ux, float& uy, const MatrixXf& f2
   uy = result(1,0)*fy/result(2,0)+cy;
 }
 void computeNormal(Point& normal, float x, float y, float z, const vector<Voxel> &voxelsTSDF){
+    // cout<<"Normals:"<<endl;
     float fx = voxelsTSDF[int(y)*voxelParams.voxNumx*voxelParams.voxNumz+int(x+1)*voxelParams.voxNumz+int(z)].value;
-    fx -= voxelsTSDF[floor(y)*voxelParams.voxNumx*voxelParams.voxNumz+floor(x)*voxelParams.voxNumz+int(z)].value;
+    fx -= voxelsTSDF[floor(y)*voxelParams.voxNumx*voxelParams.voxNumz+int(x)*voxelParams.voxNumz+int(z)].value;
     float fy = voxelsTSDF[int(y+1)*voxelParams.voxNumx*voxelParams.voxNumz+int(x)*voxelParams.voxNumz+int(z)].value;
     fy -= voxelsTSDF[int(y)*voxelParams.voxNumx*voxelParams.voxNumz+int(x)*voxelParams.voxNumz+int(z)].value;
-    float fz = voxelsTSDF[int(y)*voxelParams.voxNumx*voxelParams.voxNumz+int(x+1)*voxelParams.voxNumz+int(z+1)].value;
+    float fz = voxelsTSDF[int(y)*voxelParams.voxNumx*voxelParams.voxNumz+int(x)*voxelParams.voxNumz+int(z+1)].value;
     fz -= voxelsTSDF[int(y)*voxelParams.voxNumx*voxelParams.voxNumz+int(x)*voxelParams.voxNumz+int(z)].value;
     float normalLength = sqrt(pow(fx, 2)+pow(fy, 2)+pow(fz, 2));
+    // if(normalLength == 0){
+    //   cout<<"here"<<endl;
+    //   cout<<fx<<endl;
+    //   cout<<fy<<endl;
+    //   cout<<fz<<endl;
+    // }
     normal.x = fx/normalLength;
-    normal.y = fx/normalLength;
-    normal.z = fx/normalLength;
+    normal.y = fy/normalLength;
+    normal.z = fz/normalLength;
 }
 bool checkOmega(Point Vcur, Point Vglob, Point Ncur, Point Nglob, MatrixXf& curTransform, float Ed, float Etheta){
+    // cout<<"norm global"<<endl;
+    // cout<<Nglob.x<<endl;
+    // cout<<Nglob.y<<endl;
+    // cout<<Nglob.z<<endl;
+    // cout<<"norm current"<<endl;
+    // cout<<Ncur.x<<endl;
+    // cout<<Ncur.y<<endl;
+    // cout<<Ncur.z<<endl;
     VectorXf temp(4);
     temp(0,0) = Vcur.x;
     temp(1,0) = Vcur.y;
@@ -151,6 +166,11 @@ bool checkOmega(Point Vcur, Point Vglob, Point Ncur, Point Nglob, MatrixXf& curT
     float angle = acos((Nglob.x*RgkN(0,0)+Nglob.y*RgkN(1,0)+Nglob.z*RgkN(2,0))/(normLength1*normLength2));
     // cout<<"Length: "<<length<<endl;
     // cout<<"Angle: "<<angle<<endl;
+    // cout<<"vec1"<<endl;
+    // cout<<Vcur.x<<endl;
+    // cout<<Vcur.y<<endl;
+    // cout<<Vcur.z<<endl;
+    //cout<<curTransform;
     return (length <= Ed && angle <= Etheta);
 
 }
@@ -185,6 +205,9 @@ void sumB(const vector<Point>& Vk, const vector<Point>& Nglob, const vector<Poin
         Vgk << Vk[i].x,
               Vk[i].y,
               Vk[i].z;
+        cout<<"Vprev and Vgk"<<endl;
+        cout<<Vprev<<endl;
+        cout<<Vgk<<endl;
         MatrixXf newB = Nprev.transpose()*(Vprev-Vgk);
         B = B+newB;
     }
@@ -207,6 +230,15 @@ void updateTinc(VectorXf& x, MatrixXf& curTransform, MatrixXf& f2fTransform, con
 MatrixXf getICPPose(MatrixXf initTransform, const vector<Point> vertexMap, const vector<Point> normalMap, const vector<Voxel> &voxelsTSDF){
     MatrixXf curTransform = initTransform;
     MatrixXf f2fTransform = initTransform.inverse()*curTransform;
+
+    // for(int i = 0; i < normalMap.size(); i++){
+    //   cout<<normalMap[i].x<<endl;
+    //   cout<<normalMap[i].y<<endl;
+    //   cout<<normalMap[i].z<<endl;
+    // }
+    // cout<<vertexMap.size()<<endl;
+    // cout<<normalMap.size()<<endl;
+    //return curTransform;
     for(int z = 1; z<3; z++){
       vector<Point> Vk, Nk, Vglob, Nglob;
       int check = 0;
@@ -215,15 +247,16 @@ MatrixXf getICPPose(MatrixXf initTransform, const vector<Point> vertexMap, const
           float projUy = 0;
           computeProjPix(vertexMap[i], projUx, projUy, f2fTransform);
 
-          if(projUx < pixelWidth && projUy < pixelHeight && projUx >= 0 && projUy >= 0){
+          if(projUx < pixelWidth-1 && projUy < pixelHeight-1 && projUx >= 0 && projUy >= 0){
             //think about the transform before raycast
             //bool pointExist = pointRayCast()
               MatrixXf rotationMtx = curTransform.block<3,3>(0,0);
               float transX = curTransform(3,0);
               float transY = curTransform(3,1);
-              float transZ = curTransform(3,2);;
-              Point raycastPt;
+              float transZ = curTransform(3,2);
+              Point raycastPt, raycastPtNxt;
               bool pointExist = pointRayCast(raycastPt, voxelsTSDF, projUx, projUy, 0, rotationMtx, transX, transY, transZ);
+            //  bool nextPtExist = pointRayCast(raycastPt, voxe)
               //cout<<<<endl;
 
               if(pointExist){
@@ -232,15 +265,17 @@ MatrixXf getICPPose(MatrixXf initTransform, const vector<Point> vertexMap, const
                   // cout<<"rayx rayy rayz"<<endl;
                   // cout<<raycastPt.x<<" "<<raycastPt.y<<" "<<raycastPt.z<<endl;
                   Point raycastNorm;
-                  computeNormal(raycastNorm, raycastPt.x, raycastPt.y, raycastPt.z, voxelsTSDF);
+                  float rayxv = (raycastPt.x+voxelParams.voxPhysLength/2)/voxelParams.voxSize;
+                  float rayyv = (raycastPt.y+voxelParams.voxPhysWidth/2)/voxelParams.voxSize;
+                  float rayzv = (raycastPt.z)/voxelParams.voxSize;
+                  computeNormal(raycastNorm, rayxv, rayyv, rayzv, voxelsTSDF);
                   // cout<<normalMap[i].x<<" "<<normalMap[i].y<<" "<<normalMap[i].z<<endl;
                   // cout<<raycastNorm.x<<" "<<raycastNorm.y<<" "<<raycastNorm.z<<endl;
                   // cout<<"----------"<<endl;
-              //TODO: DEBUG CHECKOMEGA
 
-                  if(checkOmega(vertexMap[i], raycastPt, normalMap[i],raycastNorm, curTransform, 0.1, 3.14/6)){
+                  if(checkOmega(vertexMap[i], raycastPt, normalMap[i],raycastNorm, curTransform, 0.1, 3.14/12)){
                       check = 1;
-                      cout<<"threshold passed"<<endl;
+                      // cout<<"threshold passed"<<endl;
                       Vk.push_back(vertexMap[i]);
                       Vglob.push_back(raycastPt);
                       Nk.push_back(normalMap[i]);
@@ -256,11 +291,15 @@ MatrixXf getICPPose(MatrixXf initTransform, const vector<Point> vertexMap, const
       At << 0,0,0,0,0,0;
       MatrixXf B(1,1);
       B << 0;
+
       sumAt(Vk, Nglob, At);
       sumB(Vk, Nglob, Vglob, B);
+      cout<<"At"<<endl;
+      cout<<At<<endl;
       MatrixXf AtA = At*At.transpose();
       MatrixXf Atb = At*B;
       VectorXf x = AtA.colPivHouseholderQr().solve(Atb);
+      cout<<"B"<<endl<<B<<endl;
       cout<<"AtA"<<endl<<AtA<<endl;
       cout<<"AtB"<<endl<<Atb<<endl;
       cout<<"x"<<endl<<x<<endl;
@@ -272,13 +311,20 @@ MatrixXf getICPPose(MatrixXf initTransform, const vector<Point> vertexMap, const
 
 int main(){
     vector<string> poses = getGroundTruthPose("groundtruth.txt");
+    // rgbd_dataset_freiburg1_teddy/
+    // rgbd_dataset_freiburg1_plant/
+    // rgbd_dataset_freiburg2_coke
     vector<string> imageNames = getImageNames("depth.txt");
-    string firstImg = imageNames[0]+".png.bin";
+    string root_dir = "binDepths/xyzOriginal/";
+    // cout<<imageNames;
+    string firstImg = root_dir + imageNames[0] + ".png.bin";
     float *depthMap;
-    int testmode = 0;
+    int testmode = 1;
+    cout<<firstImg<<endl;
     depthMap = getDepthMap(firstImg.c_str());
     vector<Point> vertexMap, normalMap;
     QuatPose pose(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+
     MatrixXf tfo = qtransformation(Vector3f(pose.tx, pose.ty, pose.ty), pose.qx, pose.qy, pose.qz, pose.qw);
     Voxel initVoxel;
     initVoxel.value = 1;
@@ -288,10 +334,10 @@ int main(){
     vector<Voxel> newTSDF(voxelParams.voxVolume, initVoxel);
     createTSDF(depthMap, tfo.inverse(), voxelsTSDF);
     if(testmode == 1){
-        for(int i = 1; i < 5; i ++){
+        for(int i = 1; i < 30; i ++){
                 cout<<"Image No.";
                 cout<<i<<endl;
-                string img = imageNames[i]+".png.bin";
+                string img = root_dir + imageNames[i]+".png.bin";
                 float imgPose = stof(imageNames[i].substr(7,16));
                 depthMap = getDepthMap(img.c_str());
                 QuatPose newPose = getNearestPose(imgPose, poses);
@@ -307,7 +353,7 @@ int main(){
         for(int i = 1; i < 5; i ++){
                 cout<<"Image No.";
                 cout<<i<<endl;
-                string img = imageNames[i]+".png.bin";
+                string img = root_dir + imageNames[i] + ".png.bin";
                 float imgPose = stof(imageNames[i].substr(7,16));
                 depthMap = getDepthMap(img.c_str());
                 surfaceMeasurement(depthMap, vertexMap, normalMap);
@@ -317,7 +363,7 @@ int main(){
         }
     }
 
-    //validateTSDF(voxelsTSDF); //Used to validate TSDF
+    validateTSDF(voxelsTSDF); //Used to validate TSDF
     MatrixXf viewAngle = transformation(Vector3f(0.0,0.0,0.0), 0.0, 0.0, 0.0);
     chrono::high_resolution_clock::time_point t1 = chrono::high_resolution_clock::now();
     rayCasting(voxelsTSDF, viewAngle, 0.0, 0.0, 0.0);

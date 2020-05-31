@@ -6,7 +6,7 @@ const float fx = 525.0, fy = 525.0, cx = 319.5, cy = 239.5, depthFactor = 5000.0
 const float fxinv = 1.0/double(fx), fyinv = 1.0/double(fy);
 const float epislond = 0.1, epislonAng = sqrt(3)/2;
 
-const bool INTERPOLATE = 1;
+const bool INTERPOLATE = 0;
 
 int totalWeight = 0;
 struct Point{
