@@ -7,7 +7,7 @@ Compile with the command:
 
 ```g++ 2dto3d.cpp HelperFunctions.cpp PreProcessing.cpp SurfaceMeasurement.cpp TSDFConstruction.cpp -o test```
 
-Change testmode between 1 and 2 in the main function in 2dto3d.cpp to get the fusion from either from groundtruth pose or from icp. A ply file will be generated from running the program, and it can be visualized via tools such as Meshlab.
+Change testmode between 1 and 2 in the main function in ```2dto3d.cpp``` to get the fusion from either from groundtruth pose or from icp. A ply file will be generated from running the program, and it can be visualized via tools such as Meshlab.
 
 An explanation of the code can be found here:
 
