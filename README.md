@@ -1,4 +1,4 @@
-# KinectFusion
+# DepthFusion
 This is an implementation of a lightweight version of KinectFusion to work on TUM datasets. This program takes in a binary stream instead of the original png depth images. 5 images from the dataset were already given, and if you want to test with more depth maps, please use the ```readImg.ipynb``` converter to convert the files into binary streams first.
 
 To run the code you have to download the Eigen library and put it in the same directory with the cpp files.
